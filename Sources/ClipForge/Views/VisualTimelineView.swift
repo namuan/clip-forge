@@ -249,11 +249,12 @@ struct VisualTimelineView: View {
                             let moved = v.translation.width.magnitude + v.translation.height.magnitude
                             if moved < 6 {
                                 let tapT = timeForX(v.startLocation.x, w: w)
+                                let canCreateFromClick = isCreationModifierPressed()
                                 if isInZoomRow(y: v.startLocation.y) {
                                     if let hit = segmentAt(time: tapT) {
                                         vm.selectedSegmentID = hit.id
                                         vm.selectedAnnotationID = nil
-                                    } else {
+                                    } else if canCreateFromClick {
                                         vm.addZoomSegment(at: tapT)
                                     }
                                 } else if isInAnnotationRow(y: v.startLocation.y) {
@@ -261,7 +262,7 @@ struct VisualTimelineView: View {
                                                               y: v.startLocation.y, w: w) {
                                         vm.selectedAnnotationID = hit.id
                                         vm.selectedSegmentID = nil
-                                    } else {
+                                    } else if canCreateFromClick {
                                         vm.addAnnotationSegment(at: tapT)
                                     }
                                 }
@@ -397,6 +398,14 @@ struct VisualTimelineView: View {
             return String(format: "%d:%02d.%d", m, s, Int(t.truncatingRemainder(dividingBy: 1) * 10))
         }
         return String(format: "%d:%02d", m, s)
+    }
+
+    private func isCreationModifierPressed() -> Bool {
+        #if canImport(AppKit)
+        NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option)
+        #else
+        false
+        #endif
     }
 
     // MARK: - Hit testing
