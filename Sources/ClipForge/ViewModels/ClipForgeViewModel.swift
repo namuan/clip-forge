@@ -156,6 +156,36 @@ final class ClipForgeViewModel: ObservableObject {
         persistRecents()
     }
 
+    func deleteProject(_ recent: RecentProject) throws {
+        let fm = FileManager.default
+        let projectFileURL = recent.projectFileURL
+
+        if fm.fileExists(atPath: projectFileURL.path) {
+            if shouldDeleteProjectDirectory(for: projectFileURL) {
+                try fm.removeItem(at: projectFileURL.deletingLastPathComponent())
+            } else {
+                try fm.removeItem(at: projectFileURL)
+            }
+        }
+
+        recentProjects.removeAll {
+            $0.id == recent.id || $0.projectFileURL == recent.projectFileURL
+        }
+        persistRecents()
+    }
+
+    private func shouldDeleteProjectDirectory(for projectFileURL: URL) -> Bool {
+        guard projectFileURL.lastPathComponent == ClipForgeProject.fileName else {
+            return false
+        }
+
+        let projectDir = projectFileURL.deletingLastPathComponent().standardizedFileURL
+        let rootDir = Self.appDocumentsDir.standardizedFileURL
+        let projectDirPath = projectDir.path.hasSuffix("/") ? projectDir.path : projectDir.path + "/"
+        let rootDirPath = rootDir.path.hasSuffix("/") ? rootDir.path : rootDir.path + "/"
+        return projectDirPath.hasPrefix(rootDirPath) && projectDir != rootDir
+    }
+
     // MARK: - Export quality
 
     var availableExportQualities: [ExportQualityOption] {

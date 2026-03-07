@@ -4,6 +4,7 @@ struct StartScreenView: View {
     @ObservedObject var vm: ClipForgeViewModel
     var onOpenVideo: () -> Void
     var onOpenProject: () -> Void
+    @State private var pendingDeleteRecent: RecentProject?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -12,6 +13,20 @@ struct StartScreenView: View {
             rightPanel
         }
         .background(Color(white: 0.97))
+        .confirmationDialog(
+            deleteConfirmationTitle,
+            isPresented: deleteDialogPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Project", role: .destructive) {
+                confirmDeleteProject()
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDeleteRecent = nil
+            }
+        } message: {
+            Text("This permanently deletes the project from disk, including its copied source video.")
+        }
     }
 
     // MARK: - Left panel (branding + actions)
@@ -89,6 +104,8 @@ struct StartScreenView: View {
                                 openRecent(recent)
                             } onRemove: {
                                 vm.removeFromRecents(id: recent.id)
+                            } onDeleteProject: {
+                                pendingDeleteRecent = recent
                             }
                         }
                     }
@@ -102,6 +119,29 @@ struct StartScreenView: View {
     private func openRecent(_ recent: RecentProject) {
         do { try vm.loadProject(from: recent.projectFileURL) }
         catch { vm.showError(error.localizedDescription) }
+    }
+
+    private var deleteDialogPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteRecent != nil },
+            set: { isPresented in
+                if !isPresented { pendingDeleteRecent = nil }
+            })
+    }
+
+    private var deleteConfirmationTitle: String {
+        guard let pendingDeleteRecent else { return "Delete Project?" }
+        return "Delete \"\(pendingDeleteRecent.name)\"?"
+    }
+
+    private func confirmDeleteProject() {
+        guard let recent = pendingDeleteRecent else { return }
+        pendingDeleteRecent = nil
+        do {
+            try vm.deleteProject(recent)
+        } catch {
+            vm.showError(error.localizedDescription)
+        }
     }
 }
 
@@ -144,50 +184,75 @@ private struct RecentProjectRow: View {
     let recent: RecentProject
     let onOpen: () -> Void
     let onRemove: () -> Void
+    let onDeleteProject: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: 10) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.accentColor.opacity(0.75))
-                    .frame(width: 16)
+        ZStack(alignment: .trailing) {
+            Button(action: onOpen) {
+                HStack(spacing: 10) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.accentColor.opacity(0.75))
+                        .frame(width: 16)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(recent.name)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color(white: 0.18))
-                        .lineLimit(1)
-                    Text(shortPath(recent.projectFileURL))
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color(white: 0.5))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(recent.name)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color(white: 0.18))
+                            .lineLimit(1)
+                        Text(shortPath(recent.projectFileURL))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color(white: 0.5))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    Spacer()
+
+                    Text(relativeDate(recent.lastOpened))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(white: 0.52))
                 }
-
-                Spacer()
-
-                Text(relativeDate(recent.lastOpened))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color(white: 0.52))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.trailing, isHovered ? 34 : 14)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color(white: 0.93).opacity(isHovered ? 1 : 0.001)))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color(white: 0.93).opacity(isHovered ? 1 : 0.001)))
+            .buttonStyle(.plain)
+            .focusable(false)
+
+            if isHovered {
+                Button(role: .destructive, action: onDeleteProject) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.red.opacity(0.9))
+                        .frame(width: 22, height: 22)
+                        .background(
+                            Circle().fill(Color.white.opacity(0.92)))
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .padding(.trailing, 14)
+                .transition(.opacity)
+                .help("Delete Project")
+            }
         }
-        .buttonStyle(.plain)
-        .focusable(false)
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .onHover { isHovered = $0 }
+        .onHover { hovered in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                isHovered = hovered
+            }
+        }
         .contextMenu {
             Button("Open") { onOpen() }
             Divider()
             Button("Remove from Recents", role: .destructive) { onRemove() }
+            Button("Delete Project...", role: .destructive) { onDeleteProject() }
         }
     }
 
