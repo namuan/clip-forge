@@ -4,13 +4,6 @@ import CoreText
 import QuartzCore
 import Foundation
 
-// MARK: - Easing
-
-private func easeInOut(_ t: Double) -> Double {
-    let t = max(0, min(1, t))
-    return t * t * (3 - 2 * t)
-}
-
 // MARK: - Zoom transform helpers
 
 /// Builds the in-frame zoom transform for a given scale and focus center.
@@ -60,34 +53,41 @@ private func applyEasedZoomRamps(
     fps: Double = 30
 ) {
     let enabled = segments.filter { $0.isEnabled }.sorted { $0.startTime < $1.startTime }
-    let base    = preferredTransform
+    let base = preferredTransform
         .concatenating(CGAffineTransform(translationX: paddingX, y: paddingY))
+    let rampTimescale: CMTimeScale = 6000
 
     guard !enabled.isEmpty else {
         instruction.setTransform(base, at: .zero)
         return
     }
 
-    let step  = 1.0 / fps
+    let step = 1.0 / fps
     let count = Int(ceil(exportDuration / step))
+    let transformAtTime: (Double) -> CGAffineTransform = { t in
+        segmentZoomTransform(
+            at: t,
+            segments: enabled,
+            videoSize: videoSize,
+            paddingX: paddingX,
+            paddingY: paddingY,
+            preferredTransform: preferredTransform
+        )
+    }
 
     for i in 0...count {
-        let t  = min(Double(i) * step, exportDuration)
-        let T  = segmentZoomTransform(at: t, segments: enabled,
-                                      videoSize: videoSize, paddingX: paddingX, paddingY: paddingY,
-                                      preferredTransform: preferredTransform)
-        let t1 = CMTime(seconds: t, preferredTimescale: 6000)
+        let t = min(Double(i) * step, exportDuration)
+        let endTransform = transformAtTime(t)
+        let endTime = CMTime(seconds: t, preferredTimescale: rampTimescale)
+
         if i == 0 {
-            instruction.setTransform(T, at: t1)
+            instruction.setTransform(endTransform, at: endTime)
         } else {
             let prev = min(Double(i - 1) * step, exportDuration)
-            let T0   = segmentZoomTransform(at: prev, segments: enabled,
-                                            videoSize: videoSize, paddingX: paddingX, paddingY: paddingY,
-                                            preferredTransform: preferredTransform)
-            instruction.setTransformRamp(fromStart: T0, toEnd: T,
-                                         timeRange: CMTimeRange(
-                                            start: CMTime(seconds: prev, preferredTimescale: 6000),
-                                            end:   t1))
+            let startTransform = transformAtTime(prev)
+            let startTime = CMTime(seconds: prev, preferredTimescale: rampTimescale)
+            let range = CMTimeRange(start: startTime, end: endTime)
+            instruction.setTransformRamp(fromStart: startTransform, toEnd: endTransform, timeRange: range)
         }
     }
 }
@@ -99,10 +99,13 @@ private func makeVisibilityOpacityAnimation(
     duration: Double,
     totalDuration: Double
 ) -> CAKeyframeAnimation {
-    let total = max(0.001, totalDuration)
+    let minimumTimelineDuration = 0.001
+    let maximumFadeDuration = 0.3
+
+    let total = max(minimumTimelineDuration, totalDuration)
     let start = max(0, min(startTime, total))
     let end = max(start, min(start + max(0, duration), total))
-    let fade = min(0.3, (end - start) / 2)
+    let fade = min(maximumFadeDuration, (end - start) / 2)
     let fadeInEnd = min(end, start + fade)
     let fadeOutStart = max(start, end - fade)
 
@@ -165,10 +168,13 @@ private func annotationTextImage(
     size: CGSize,
     drawsShadow: Bool
 ) -> CGImage? {
+    let textRasterScale: CGFloat = 2
+    let textInset: CGFloat = 2
+    let shadowBlur: CGFloat = 3
+
     let drawSize = CGSize(width: max(1, size.width), height: max(1, size.height))
-    let scale: CGFloat = 2
-    let pixelW = max(1, Int(ceil(drawSize.width * scale)))
-    let pixelH = max(1, Int(ceil(drawSize.height * scale)))
+    let pixelW = max(1, Int(ceil(drawSize.width * textRasterScale)))
+    let pixelH = max(1, Int(ceil(drawSize.height * textRasterScale)))
 
     guard let ctx = CGContext(
         data: nil,
@@ -180,7 +186,7 @@ private func annotationTextImage(
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else { return nil }
 
-    ctx.scaleBy(x: scale, y: scale)
+    ctx.scaleBy(x: textRasterScale, y: textRasterScale)
     ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0))
     ctx.fill(CGRect(origin: .zero, size: drawSize))
 
@@ -193,7 +199,7 @@ private func annotationTextImage(
     let attributed = NSAttributedString(string: text, attributes: attrs)
     let framesetter = CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
 
-    let textRect = CGRect(origin: .zero, size: drawSize).insetBy(dx: 2, dy: 2)
+    let textRect = CGRect(origin: .zero, size: drawSize).insetBy(dx: textInset, dy: textInset)
     let path = CGMutablePath()
     path.addRect(textRect)
     let frame = CTFramesetterCreateFrame(
@@ -206,7 +212,7 @@ private func annotationTextImage(
     if drawsShadow {
         ctx.setShadow(
             offset: CGSize(width: 1, height: -1),
-            blur: 3,
+            blur: shadowBlur,
             color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.8)
         )
     }
