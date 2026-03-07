@@ -120,11 +120,11 @@ struct BackgroundControlsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.15), lineWidth: isSelected ? 2 : 1)
+                        .stroke(isSelected ? .accentColor : Color.secondary.opacity(0.25), lineWidth: isSelected ? 2 : 1)
                 )
             Text(preset.name)
                 .font(.system(size: 9))
-                .foregroundColor(isSelected ? .white : .secondary)
+                .foregroundColor(isSelected ? .primary : .secondary)
         }
     }
 
@@ -139,7 +139,7 @@ struct BackgroundControlsView: View {
         case .solid:
             s.solidColor.color
         case .transparent:
-            Color(white: 0.3)
+            Color(white: 0.85)
         }
     }
 }

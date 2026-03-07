@@ -116,7 +116,7 @@ struct ContentView: View {
                 // Delay lets the window resize to editor dimensions before maximising
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     #if canImport(AppKit)
-                    if let w = NSApplication.shared.keyWindow, !w.isZoomed { w.zoom(nil) }
+                    if let w = activeWindow, !w.isZoomed { w.zoom(nil) }
                     #endif
                 }
             }
@@ -127,19 +127,26 @@ struct ContentView: View {
     private func configureWindow(startScreen: Bool) {
         #if canImport(AppKit)
         DispatchQueue.main.async {
-            guard let window = NSApplication.shared.keyWindow else { return }
+            guard let window = activeWindow else { return }
             if startScreen {
+                let dialogSize = NSSize(width: 660, height: 440)
+                if window.isZoomed { window.zoom(nil) }
                 window.title = ""
                 window.titleVisibility          = .hidden
                 window.titlebarAppearsTransparent = true
+                window.styleMask.remove(.titled)
+                window.styleMask.remove(.resizable)
                 window.styleMask.insert(.fullSizeContentView)
                 window.isMovableByWindowBackground = true
                 window.titlebarSeparatorStyle = .none
                 window.standardWindowButton(.closeButton)?.isHidden = true
                 window.standardWindowButton(.miniaturizeButton)?.isHidden = true
                 window.standardWindowButton(.zoomButton)?.isHidden = true
+                window.setContentSize(dialogSize)
                 centerOnActiveScreen(window)
             } else {
+                window.styleMask.insert(.titled)
+                window.styleMask.insert(.resizable)
                 window.titleVisibility          = .visible
                 window.titlebarAppearsTransparent = false
                 window.styleMask.remove(.fullSizeContentView)
@@ -148,12 +155,23 @@ struct ContentView: View {
                 window.standardWindowButton(.closeButton)?.isHidden = false
                 window.standardWindowButton(.miniaturizeButton)?.isHidden = false
                 window.standardWindowButton(.zoomButton)?.isHidden = false
+                window.title = "ClipForge"
+                window.toolbar?.isVisible = true
+
+                // Re-zoom after style restoration so the editor reliably maximizes.
+                if !window.isZoomed { window.zoom(nil) }
             }
         }
         #endif
     }
 
     #if canImport(AppKit)
+    private var activeWindow: NSWindow? {
+        NSApplication.shared.keyWindow
+            ?? NSApplication.shared.mainWindow
+            ?? NSApplication.shared.windows.first(where: { $0.isVisible })
+    }
+
     private func centerOnActiveScreen(_ window: NSWindow) {
         let mouse = NSEvent.mouseLocation
         let activeScreen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
@@ -187,10 +205,11 @@ struct ContentView: View {
     // MARK: - Navigation title
 
     private var navigationTitle: String {
+        if vm.player == nil { return "" }
         if !vm.projectName.isEmpty {
             return vm.projectName + (vm.hasUnsavedChanges ? " •" : "")
         }
-        return vm.player != nil ? "Untitled •" : "ClipForge"
+        return "Untitled •"
     }
 
     // MARK: - Columns

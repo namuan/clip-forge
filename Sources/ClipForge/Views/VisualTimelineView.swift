@@ -276,9 +276,9 @@ struct VisualTimelineView: View {
                 )
             }
             .frame(height: totalH)
-            .background(Color(white: 0.1))
+            .background(Color(white: 0.97))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.82), lineWidth: 1))
             .padding(.horizontal)
         }
         #if canImport(AppKit)
@@ -462,7 +462,7 @@ struct VisualTimelineView: View {
 
     private func drawRuler(ctx: GraphicsContext, w: CGFloat, h: CGFloat) {
         ctx.fill(Path(CGRect(x: 0, y: 0, width: w, height: rulerH)),
-                 with: .color(Color(white: 0.15)))
+                 with: .color(Color(white: 0.93)))
 
         let majorStep = niceStep(w: w)
         let minorStep = majorStep / 5
@@ -488,7 +488,7 @@ struct VisualTimelineView: View {
                 ctx.stroke(Path { p in
                     p.move(to: CGPoint(x: px, y: rulerH))
                     p.addLine(to: CGPoint(x: px, y: h))
-                }, with: .color(Color.white.opacity(0.06)), lineWidth: 0.5)
+                }, with: .color(Color.black.opacity(0.08)), lineWidth: 0.5)
 
                 // Label
                 let clampedT = min(max(t, 0), vm.duration)
@@ -508,7 +508,7 @@ struct VisualTimelineView: View {
 
         ctx.stroke(Path { p in
             p.move(to: CGPoint(x: 0, y: rulerH)); p.addLine(to: CGPoint(x: w, y: rulerH))
-        }, with: .color(Color(white: 0.3)), lineWidth: 0.5)
+        }, with: .color(Color(white: 0.78)), lineWidth: 0.5)
     }
 
     // MARK: - Zoom row
@@ -516,7 +516,7 @@ struct VisualTimelineView: View {
     private func drawZoomRow(ctx: GraphicsContext, w: CGFloat) {
         let rowTop = rulerH + 1
         ctx.draw(ctx.resolve(Text("ZOOM").font(.system(size: 8, weight: .semibold))
-            .foregroundColor(Color.white.opacity(0.25))),
+            .foregroundColor(.secondary)),
             at: CGPoint(x: 5, y: rowTop + 4), anchor: .topLeading)
 
         for seg in vm.segments {
@@ -565,7 +565,7 @@ struct VisualTimelineView: View {
 
         ctx.stroke(Path { p in
             p.move(to: CGPoint(x: 0, y: rowTop + zoomH)); p.addLine(to: CGPoint(x: w, y: rowTop + zoomH))
-        }, with: .color(Color(white: 0.3)), lineWidth: 0.5)
+        }, with: .color(Color(white: 0.78)), lineWidth: 0.5)
     }
 
     // MARK: - Annotation row
@@ -574,7 +574,7 @@ struct VisualTimelineView: View {
         let rowTop = rulerH + zoomH + 2
         let blockH = annLaneSlot - 4
         ctx.draw(ctx.resolve(Text("ANN").font(.system(size: 8, weight: .semibold))
-            .foregroundColor(Color.white.opacity(0.25))),
+            .foregroundColor(.secondary)),
             at: CGPoint(x: 5, y: rowTop + 4), anchor: .topLeading)
 
         for (i, (ann, lane)) in lanedAnnotations.enumerated() {
@@ -613,7 +613,7 @@ struct VisualTimelineView: View {
         guard vm.duration > 0 else { return }
         let tsX = xFor(vm.trimStart, w: w)
         let teX = xFor(vm.effectiveTrimEnd, w: w)
-        let dim = Color.black.opacity(0.5)
+        let dim = Color.black.opacity(0.18)
         if tsX > 0 { ctx.fill(Path(CGRect(x: 0,   y: 0, width: max(0, tsX),    height: h)), with: .color(dim)) }
         if teX < w { ctx.fill(Path(CGRect(x: teX, y: 0, width: max(0, w - teX), height: h)), with: .color(dim)) }
         for hx in [tsX, teX] {
@@ -633,9 +633,9 @@ struct VisualTimelineView: View {
             p.addLine(to: CGPoint(x: px + 5, y: 0))
             p.addLine(to: CGPoint(x: px, y: 8))
             p.closeSubpath()
-        }, with: .color(.white))
+        }, with: .color(.red))
         ctx.stroke(Path { p in
             p.move(to: CGPoint(x: px, y: 8)); p.addLine(to: CGPoint(x: px, y: h))
-        }, with: .color(Color.white.opacity(0.8)), lineWidth: 1.5)
+        }, with: .color(Color.red.opacity(0.8)), lineWidth: 1.5)
     }
 }

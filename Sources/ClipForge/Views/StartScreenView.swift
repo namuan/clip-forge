@@ -17,11 +17,11 @@ struct StartScreenView: View {
     // MARK: - Left panel (branding + actions)
 
     private var leftPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             Spacer()
 
             // Icon + name
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(spacing: 6) {
                 Image(systemName: "film.stack")
                     .font(.system(size: 40, weight: .light))
                     .foregroundStyle(Color.accentColor.opacity(0.9))
@@ -36,7 +36,7 @@ struct StartScreenView: View {
             Spacer().frame(height: 36)
 
             // Action buttons
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(spacing: 6) {
                 StartActionButton(icon: "plus.rectangle.on.folder",
                                   label: "New Video",
                                   action: onOpenVideo)
@@ -44,6 +44,7 @@ struct StartScreenView: View {
                                   label: "Open Project",
                                   action: onOpenProject)
             }
+            .frame(width: 150)
 
             Spacer()
         }
@@ -123,8 +124,8 @@ private struct StartActionButton: View {
                 Text(label)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isHovered ? Color(white: 0.14) : Color(white: 0.2))
-                Spacer()
             }
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
