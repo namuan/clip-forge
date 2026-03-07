@@ -1,4 +1,3 @@
-import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 #if canImport(AppKit)
@@ -34,10 +33,6 @@ struct ContentView: View {
     @State private var showSaveSheet       = false
     @State private var newProjectName      = ""
     @State private var activePanel: ControlPanel = .zoom
-
-    #if canImport(UIKit)
-    @State private var photosPickerItem: PhotosPickerItem?
-    #endif
 
     var body: some View {
         configured(navigationStack)
@@ -134,11 +129,12 @@ struct ContentView: View {
                 window.title = ""
                 window.titleVisibility          = .hidden
                 window.titlebarAppearsTransparent = true
-                window.styleMask.remove(.titled)
+                window.styleMask.insert(.titled)
                 window.styleMask.remove(.resizable)
                 window.styleMask.insert(.fullSizeContentView)
                 window.isMovableByWindowBackground = true
                 window.titlebarSeparatorStyle = .none
+                window.toolbar?.isVisible = false
                 window.standardWindowButton(.closeButton)?.isHidden = true
                 window.standardWindowButton(.miniaturizeButton)?.isHidden = true
                 window.standardWindowButton(.zoomButton)?.isHidden = true
@@ -157,6 +153,8 @@ struct ContentView: View {
                 window.standardWindowButton(.zoomButton)?.isHidden = false
                 window.title = "ClipForge"
                 window.toolbar?.isVisible = true
+                window.toolbar?.displayMode = .iconOnly
+                window.toolbar?.sizeMode = .regular
 
                 // Re-zoom after style restoration so the editor reliably maximizes.
                 if !window.isZoomed { window.zoom(nil) }
@@ -321,39 +319,13 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if vm.player != nil {
-            // Load video
-            ToolbarItem(placement: .primaryAction) {
-                #if canImport(UIKit)
-                Menu {
-                    PhotosPicker(selection: $photosPickerItem,
-                                 matching: .videos, photoLibrary: .shared()) {
-                        Label("From Photos", systemImage: "photo")
-                    }
-                    Button { importingProject = false; showFilePicker = true } label: {
-                        Label("From Files", systemImage: "folder")
-                    }
-                } label: {
-                    Label("Load Video", systemImage: "plus.circle")
-                }
-                #else
-                Button { importingProject = false; showFilePicker = true } label: {
-                    Label("Load Video", systemImage: "plus.circle")
-                }
-                #endif
-            }
-
-            // Open project
-            ToolbarItem(placement: .primaryAction) {
-                Button { importingProject = true; showFilePicker = true } label: {
-                    Label("Open Project", systemImage: "folder")
-                }
-            }
-
             // Save
             ToolbarItem(placement: .primaryAction) {
                 Button { handleSave() } label: {
-                    Label("Save", systemImage: "square.and.arrow.down")
+                    Image(systemName: "square.and.arrow.down")
                 }
+                .buttonStyle(.plain)
+                .help("Save Project")
                 .disabled(vm.player == nil)
                 .keyboardShortcut("s", modifiers: .command)
             }
@@ -361,8 +333,10 @@ struct ContentView: View {
             // Export
             ToolbarItem(placement: .primaryAction) {
                 Button { vm.exportVideo() } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
+                    Image(systemName: "square.and.arrow.up")
                 }
+                .buttonStyle(.plain)
+                .help("Export Video")
                 .disabled(vm.player == nil || vm.isExporting)
             }
         }
