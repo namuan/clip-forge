@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct VideoEditorApp: App {
+struct ClipForgeApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

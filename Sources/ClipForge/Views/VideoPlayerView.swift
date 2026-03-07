@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - Video preview with background canvas
 
 struct VideoPlayerView: View {
-    @ObservedObject var vm: VideoEditorViewModel
+    @ObservedObject var vm: ClipForgeViewModel
 
     var body: some View {
         // Background determines layout size. Overlay fills that exact area so

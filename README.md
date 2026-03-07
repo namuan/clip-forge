@@ -1,4 +1,4 @@
-# VideoEditor
+# ClipForge
 
 Video editor for iOS and macOS with timeline-based zoom, annotations, canvas styling, clip trim/speed controls, and baked export via AVFoundation.
 

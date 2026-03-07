@@ -23,7 +23,7 @@ private enum ControlPanel: String, CaseIterable {
 // MARK: - ContentView
 
 struct ContentView: View {
-    @StateObject private var vm = VideoEditorViewModel()
+    @StateObject private var vm = ClipForgeViewModel()
 
     @State private var showFilePicker  = false
     @State private var showShareSheet  = false
@@ -110,7 +110,7 @@ struct ContentView: View {
                     Spacer(minLength: 32)
                 }
             }
-            .navigationTitle("Video Editor")
+            .navigationTitle("ClipForge")
             #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
             #endif

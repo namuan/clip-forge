@@ -1,14 +1,16 @@
 #!/bin/zsh
-# install.command – build VideoEditor.app and install to ~/Applications
+# install.command – build ClipForge.app and install to ~/Applications
 # Usage: ./install.command [--open]
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-APP_NAME="VideoEditor"
-BUNDLE_ID="com.example.videoeditor"
+APP_NAME="ClipForge"
+BUNDLE_ID="com.example.clipforge"
 MIN_MACOS="14.0"
 INSTALL_DIR="$HOME/Applications"
+ICON_SOURCE="assets/icon.png"
+ICON_RESOURCE_NAME="$APP_NAME.png"
 
 # ── Resolve script directory so this works when double-clicked in Finder ──────
 SCRIPT_DIR="${0:A:h}"
@@ -34,6 +36,11 @@ if [[ ! -f "$BINARY" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$ICON_SOURCE" ]]; then
+  echo "✘ App icon source not found at $ICON_SOURCE" >&2
+  exit 1
+fi
+
 # ── Assemble .app bundle ──────────────────────────────────────────────────────
 STAGING="$(mktemp -d)/$APP_NAME.app"
 CONTENTS="$STAGING/Contents"
@@ -45,6 +52,9 @@ echo "▶ Assembling $APP_NAME.app…"
 # Binary
 cp "$BINARY" "$CONTENTS/MacOS/$APP_NAME"
 
+# App icon resource
+cp "$ICON_SOURCE" "$CONTENTS/Resources/$ICON_RESOURCE_NAME"
+
 # Info.plist
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -55,7 +65,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>       <string>$APP_NAME</string>
   <key>CFBundleIdentifier</key>       <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>             <string>$APP_NAME</string>
-  <key>CFBundleDisplayName</key>      <string>Video Editor</string>
+  <key>CFBundleDisplayName</key>      <string>ClipForge</string>
   <key>CFBundlePackageType</key>      <string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key>          <string>1</string>
@@ -82,6 +92,25 @@ fi
 echo "▶ Installing to $DEST…"
 cp -R "$STAGING" "$DEST"
 rm -rf "$(dirname "$STAGING")"
+
+echo "▶ Applying app icon…"
+swift -e '
+import AppKit
+import Foundation
+
+let appPath = CommandLine.arguments[1]
+let iconPath = CommandLine.arguments[2]
+
+guard let image = NSImage(contentsOfFile: iconPath) else {
+    fputs("Failed to load icon image at \(iconPath)\n", stderr)
+    exit(1)
+}
+
+if !NSWorkspace.shared.setIcon(image, forFile: appPath, options: []) {
+    fputs("Failed to apply icon to \(appPath)\n", stderr)
+    exit(1)
+}
+' "$DEST" "$DEST/Contents/Resources/$ICON_RESOURCE_NAME"
 
 echo "✔ Installed $APP_NAME.app → $DEST"
 

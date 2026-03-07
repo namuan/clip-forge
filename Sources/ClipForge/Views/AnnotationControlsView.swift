@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AnnotationControlsView: View {
-    @ObservedObject var vm: VideoEditorViewModel
+    @ObservedObject var vm: ClipForgeViewModel
 
     var body: some View {
         VStack(spacing: 12) {

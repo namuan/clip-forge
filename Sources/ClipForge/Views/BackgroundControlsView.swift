@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct BackgroundControlsView: View {
-    @ObservedObject var vm: VideoEditorViewModel
+    @ObservedObject var vm: ClipForgeViewModel
 
     // Local Color state for ColorPicker (two-way sync via onChange)
     @State private var startColor: Color = .purple

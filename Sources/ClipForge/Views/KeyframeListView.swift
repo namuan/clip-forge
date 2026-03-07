@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct KeyframeListView: View {
-    @ObservedObject var vm: VideoEditorViewModel
+    @ObservedObject var vm: ClipForgeViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

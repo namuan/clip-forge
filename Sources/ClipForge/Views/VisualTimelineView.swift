@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VisualTimelineView: View {
-    @ObservedObject var vm: VideoEditorViewModel
+    @ObservedObject var vm: ClipForgeViewModel
 
     private let rulerH: CGFloat   = 22
     private let zoomH: CGFloat    = 44

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ZoomControlsView: View {
-    @ObservedObject var vm: VideoEditorViewModel
+    @ObservedObject var vm: ClipForgeViewModel
 
     var body: some View {
         if let seg = vm.selectedSegment {

@@ -5,7 +5,7 @@ import Foundation
 import SwiftUI
 
 @MainActor
-final class VideoEditorViewModel: ObservableObject {
+final class ClipForgeViewModel: ObservableObject {
 
     // MARK: - Player state
     @Published var player: AVPlayer?
@@ -266,7 +266,7 @@ final class VideoEditorViewModel: ObservableObject {
 
         Task {
             do {
-                try await VideoEditor.exportVideo(
+                try await ClipForge.exportVideo(
                     asset: asset, segments: segs, annotations: anns,
                     background: bg, trimStart: ts, trimEnd: te, speed: spd,
                     outputURL: outURL)
