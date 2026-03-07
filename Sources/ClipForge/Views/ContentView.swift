@@ -29,9 +29,10 @@ struct ContentView: View {
 
     @State private var showFilePicker      = false
     @State private var importingProject    = false   // true = project pick, false = video pick
-    @State private var showShareSheet      = false
     @State private var showSaveSheet       = false
+    @State private var showExportSheet     = false
     @State private var newProjectName      = ""
+    @State private var selectedExportQuality: ExportQualityOption = .p1080
     @State private var activePanel: ControlPanel = .zoom
 
     var body: some View {
@@ -91,16 +92,13 @@ struct ContentView: View {
                     loadFromURL(url)
                 }
             }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = vm.exportURL { ShareSheet(url: url) }
-            }
             .sheet(isPresented: $showSaveSheet) { saveNameSheet }
+            .sheet(isPresented: $showExportSheet) { exportSheet }
             .alert("Error", isPresented: $vm.showAlert) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(vm.alertMessage ?? "")
             }
-            .onChange(of: vm.exportURL)            { _, url in if url != nil { showShareSheet = true } }
             .onChange(of: vm.selectedAnnotationID) { _, id  in if id  != nil { activePanel = .text } }
             .onChange(of: vm.selectedSegmentID)    { _, id  in if id  != nil { activePanel = .zoom } }
             .onChange(of: vm.backgroundSettings)   { _,  _  in vm.hasUnsavedChanges = true }
@@ -254,18 +252,6 @@ struct ContentView: View {
                     .padding(.top, 8)
                 }
 
-                // ── Export progress ────────────────────────────────────────
-                if vm.isExporting {
-                    GroupBox {
-                        HStack {
-                            ProgressView()
-                            Text("Exporting…").foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                }
-
                 Spacer(minLength: 24)
             }
         }
@@ -336,7 +322,11 @@ struct ContentView: View {
                     Divider()
                         .frame(height: 20)
 
-                    Button { vm.exportVideo() } label: {
+                    Button {
+                        vm.exportURL = nil
+                        selectedExportQuality = vm.defaultExportQuality
+                        showExportSheet = true
+                    } label: {
                         Label("Export", systemImage: "arrow.up.to.line")
                             .font(.system(size: 14, weight: .semibold))
                             .labelStyle(.titleAndIcon)
@@ -353,6 +343,115 @@ struct ContentView: View {
                 .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 1))
             }
         }
+    }
+
+    // MARK: - Export sheet
+
+    private var exportSheet: some View {
+        VStack(spacing: 16) {
+            if let exportedURL = vm.exportURL {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 44))
+                    .foregroundColor(.green)
+
+                Text("Export Complete")
+                    .font(.title3.bold())
+
+                Text(exportedURL.lastPathComponent)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                #if canImport(AppKit)
+                HStack(spacing: 10) {
+                    Button("Show Finder") { showInFinder(exportedURL) }
+                        .buttonStyle(.borderedProminent)
+
+                    Button("Save As…") { saveExportAs(exportedURL) }
+                        .buttonStyle(.bordered)
+
+                    Button("Dismiss") {
+                        showExportSheet = false
+                        vm.exportURL = nil
+                    }
+                    .buttonStyle(.bordered)
+                }
+                #else
+                Button("Dismiss") {
+                    showExportSheet = false
+                    vm.exportURL = nil
+                }
+                .buttonStyle(.borderedProminent)
+                #endif
+            } else {
+                Text("Export Video")
+                    .font(.title3.bold())
+
+                Text("Choose output quality")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                Picker("Quality", selection: $selectedExportQuality) {
+                    ForEach(vm.availableExportQualities) { quality in
+                        Text("\(quality.title)  •  \(quality.subtitle)")
+                            .tag(quality)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .disabled(vm.isExporting)
+
+                if vm.isExporting {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                        Text("Exporting \(selectedExportQuality.title)…")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button("Cancel") {
+                        showExportSheet = false
+                        vm.exportURL = nil
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(vm.isExporting)
+
+                    Button("Export") {
+                        vm.exportVideo(quality: selectedExportQuality)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.isExporting || vm.player == nil)
+                }
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 360)
+        .interactiveDismissDisabled(vm.isExporting)
+    }
+
+    private func showInFinder(_ url: URL) {
+        #if canImport(AppKit)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        #endif
+    }
+
+    private func saveExportAs(_ sourceURL: URL) {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = sourceURL.lastPathComponent
+        panel.allowedContentTypes = [.mpeg4Movie]
+        guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
+        do {
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        } catch {
+            vm.showError(error.localizedDescription)
+        }
+        #endif
     }
 
     // MARK: - Save logic

@@ -269,7 +269,8 @@ func exportVideo(
     trimStart: Double,
     trimEnd: Double,
     speed: Double,
-    outputURL: URL
+    outputURL: URL,
+    presetName: String = AVAssetExportPresetHighestQuality
 ) async throws {
 
     // ── 1. Composition ────────────────────────────────────────────────────────
@@ -531,7 +532,7 @@ func exportVideo(
 
     // ── 7. Export session ────────────────────────────────────────────────────
     guard let session = AVAssetExportSession(asset: composition,
-                                             presetName: AVAssetExportPresetHighestQuality)
+                                             presetName: presetName)
     else { throw ExportError.compositionFailed }
 
     session.videoComposition = videoComposition

@@ -4,6 +4,42 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
+enum ExportQualityOption: String, CaseIterable, Identifiable, Sendable {
+    case p480
+    case p720
+    case p1080
+    case original
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .p480:    return "480p"
+        case .p720:    return "720p"
+        case .p1080:   return "1080p"
+        case .original:return "Best"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .p480:    return "640 × 480"
+        case .p720:    return "1280 × 720"
+        case .p1080:   return "1920 × 1080"
+        case .original:return "Highest quality"
+        }
+    }
+
+    var presetName: String {
+        switch self {
+        case .p480:    return AVAssetExportPreset640x480
+        case .p720:    return AVAssetExportPreset1280x720
+        case .p1080:   return AVAssetExportPreset1920x1080
+        case .original:return AVAssetExportPresetHighestQuality
+        }
+    }
+}
+
 @MainActor
 final class ClipForgeViewModel: ObservableObject {
 
@@ -114,6 +150,17 @@ final class ClipForgeViewModel: ObservableObject {
     func removeFromRecents(id: UUID) {
         recentProjects.removeAll { $0.id == id }
         persistRecents()
+    }
+
+    // MARK: - Export quality
+
+    var availableExportQualities: [ExportQualityOption] {
+        ExportQualityOption.allCases
+    }
+
+    var defaultExportQuality: ExportQualityOption {
+        if availableExportQualities.contains(.p1080) { return .p1080 }
+        return availableExportQualities.first ?? .p1080
     }
 
     // MARK: - App documents directory
@@ -440,29 +487,39 @@ final class ClipForgeViewModel: ObservableObject {
 
     // MARK: - Export
 
-    func exportVideo() {
+    func exportVideo(quality: ExportQualityOption) {
         guard let asset else { showError("No video loaded."); return }
         guard !isExporting else { return }
         isExporting = true
+        exportURL = nil
 
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
 
-        let segs = segments; let anns = annotations
+        let segs = segments
+        let anns = annotations
         let bg = backgroundSettings
-        let ts = trimStart; let te = effectiveTrimEnd; let spd = playbackSpeed
+        let ts = trimStart
+        let te = effectiveTrimEnd
+        let spd = playbackSpeed
+        let presetName = quality.presetName
 
         Task {
             do {
                 try await ClipForge.exportVideo(
                     asset: asset, segments: segs, annotations: anns,
                     background: bg, trimStart: ts, trimEnd: te, speed: spd,
-                    outputURL: outURL)
+                    outputURL: outURL,
+                    presetName: presetName)
                 await MainActor.run { self.exportURL = outURL; self.isExporting = false }
             } catch {
                 await MainActor.run { self.isExporting = false; self.showError(error.localizedDescription) }
             }
         }
+    }
+
+    func exportVideo() {
+        exportVideo(quality: defaultExportQuality)
     }
 
     func showError(_ msg: String) { alertMessage = msg; showAlert = true }
