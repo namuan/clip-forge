@@ -172,12 +172,15 @@ private struct RecentProjectRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Color(white: 0.52))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(
-                isHovered ? Color(white: 0.93) : Color.clear)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(white: 0.93).opacity(isHovered ? 1 : 0.001)))
         }
         .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onHover { isHovered = $0 }
         .contextMenu {
             Button("Open") { onOpen() }
