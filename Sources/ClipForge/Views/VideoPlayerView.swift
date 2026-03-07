@@ -39,26 +39,71 @@ struct VideoPlayerView: View {
 
             // Shape annotations
             ForEach(visible.filter { $0.kind != .text }) { ann in
-                shapePath(ann: ann, videoW: videoW, videoH: videoH)
-                    .stroke(ann.strokeColor.color, lineWidth: ann.strokeWidth)
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.3), value: vm.currentTime)
+                if ann.kind == .arrow {
+                    let paths = arrowPaths(
+                        start: CGPoint(x: ann.position.x * videoW, y: ann.position.y * videoH),
+                        end: CGPoint(x: ann.endPosition.x * videoW, y: ann.endPosition.y * videoH),
+                        strokeWidth: ann.strokeWidth,
+                        headSize: ann.arrowHeadSize,
+                        headAngle: ann.arrowHeadAngle,
+                        doubleHeaded: ann.arrowDoubleHeaded,
+                        filled: ann.arrowFilled
+                    )
+
+                    if let fillPath = paths.fill {
+                        fillPath
+                            .fill(ann.strokeColor.color)
+                    }
+
+                    paths.stroke
+                        .stroke(ann.strokeColor.color, lineWidth: ann.strokeWidth)
+                } else {
+                    shapePath(ann: ann, videoW: videoW, videoH: videoH)
+                        .stroke(ann.strokeColor.color, lineWidth: ann.strokeWidth)
+                }
             }
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.3), value: vm.currentTime)
 
             // Pending shape draft (dashed preview while no annotation selected)
             if vm.selectedAnnotationID == nil, vm.pendingAnnotationKind != .text {
-                shapePath(
-                    kind: vm.pendingAnnotationKind,
-                    start: CGPoint(x: vm.pendingAnnotationPosition.x    * videoW,
-                                   y: vm.pendingAnnotationPosition.y    * videoH),
-                    end:   CGPoint(x: vm.pendingAnnotationEndPosition.x * videoW,
-                                   y: vm.pendingAnnotationEndPosition.y * videoH),
-                    strokeWidth: vm.pendingAnnotationStrokeWidth
-                )
-                .stroke(
-                    vm.pendingAnnotationStrokeColor.color.opacity(0.75),
-                    style: StrokeStyle(lineWidth: vm.pendingAnnotationStrokeWidth, dash: [6, 4])
-                )
+                if vm.pendingAnnotationKind == .arrow {
+                    let paths = arrowPaths(
+                        start: CGPoint(x: vm.pendingAnnotationPosition.x * videoW,
+                                       y: vm.pendingAnnotationPosition.y * videoH),
+                        end: CGPoint(x: vm.pendingAnnotationEndPosition.x * videoW,
+                                     y: vm.pendingAnnotationEndPosition.y * videoH),
+                        strokeWidth: vm.pendingAnnotationStrokeWidth,
+                        headSize: vm.pendingArrowHeadSize,
+                        headAngle: vm.pendingArrowHeadAngle,
+                        doubleHeaded: vm.pendingArrowDoubleHeaded,
+                        filled: vm.pendingArrowFilled
+                    )
+
+                    if let fillPath = paths.fill {
+                        fillPath
+                            .fill(vm.pendingAnnotationStrokeColor.color.opacity(0.2))
+                    }
+
+                    paths.stroke
+                        .stroke(
+                            vm.pendingAnnotationStrokeColor.color.opacity(0.75),
+                            style: StrokeStyle(lineWidth: vm.pendingAnnotationStrokeWidth, dash: [6, 4])
+                        )
+                } else {
+                    shapePath(
+                        kind: vm.pendingAnnotationKind,
+                        start: CGPoint(x: vm.pendingAnnotationPosition.x    * videoW,
+                                       y: vm.pendingAnnotationPosition.y    * videoH),
+                        end:   CGPoint(x: vm.pendingAnnotationEndPosition.x * videoW,
+                                       y: vm.pendingAnnotationEndPosition.y * videoH),
+                        strokeWidth: vm.pendingAnnotationStrokeWidth
+                    )
+                    .stroke(
+                        vm.pendingAnnotationStrokeColor.color.opacity(0.75),
+                        style: StrokeStyle(lineWidth: vm.pendingAnnotationStrokeWidth, dash: [6, 4])
+                    )
+                }
             }
 
             // Text annotations
@@ -162,7 +207,7 @@ struct VideoPlayerView: View {
         case .line:
             return Path { p in p.move(to: start); p.addLine(to: end) }
         case .arrow:
-            return arrowPath(start: start, end: end, strokeWidth: strokeWidth)
+            return Path()
         case .rectangle:
             return Path(CGRect(x: min(start.x, end.x), y: min(start.y, end.y),
                                width: abs(end.x - start.x), height: abs(end.y - start.y)))
@@ -173,12 +218,20 @@ struct VideoPlayerView: View {
         }
     }
 
-    private func arrowPath(start: CGPoint, end: CGPoint, strokeWidth: CGFloat) -> Path {
+    private func arrowPaths(
+        start: CGPoint,
+        end: CGPoint,
+        strokeWidth: CGFloat,
+        headSize: CGFloat,
+        headAngle: CGFloat,
+        doubleHeaded: Bool,
+        filled: Bool
+    ) -> (stroke: Path, fill: Path?) {
         let dx = end.x - start.x
         let dy = end.y - start.y
         let length = hypot(dx, dy)
 
-        return Path { path in
+        let stroke = Path { path in
             path.move(to: start)
             path.addLine(to: end)
 
@@ -187,23 +240,65 @@ struct VideoPlayerView: View {
             let ux = dx / length
             let uy = dy / length
 
-            let headLength = min(max(strokeWidth * 4, 12), length * 0.6)
-            let wingLength = headLength * tan(.pi / 7)
+            let clampedAngle = headAngle.clamped(to: 8...80)
+            let maxHeadFraction: CGFloat = doubleHeaded ? 0.45 : 0.6
+            let headLength = min(max(strokeWidth * headSize, strokeWidth * 2), length * maxHeadFraction)
+            let wingLength = headLength * tan((clampedAngle * .pi / 180))
 
-            let base = CGPoint(x: end.x - ux * headLength,
-                               y: end.y - uy * headLength)
-            let perp = CGPoint(x: -uy, y: ux)
+            func addHead(tip: CGPoint, dirX: CGFloat, dirY: CGFloat) {
+                let base = CGPoint(x: tip.x - dirX * headLength,
+                                   y: tip.y - dirY * headLength)
+                let perp = CGPoint(x: -dirY, y: dirX)
+                let left = CGPoint(x: base.x + perp.x * wingLength,
+                                   y: base.y + perp.y * wingLength)
+                let right = CGPoint(x: base.x - perp.x * wingLength,
+                                    y: base.y - perp.y * wingLength)
+                path.move(to: tip)
+                path.addLine(to: left)
+                path.move(to: tip)
+                path.addLine(to: right)
+            }
 
-            let left = CGPoint(x: base.x + perp.x * wingLength,
-                               y: base.y + perp.y * wingLength)
-            let right = CGPoint(x: base.x - perp.x * wingLength,
-                                y: base.y - perp.y * wingLength)
-
-            path.move(to: end)
-            path.addLine(to: left)
-            path.move(to: end)
-            path.addLine(to: right)
+            addHead(tip: end, dirX: ux, dirY: uy)
+            if doubleHeaded {
+                addHead(tip: start, dirX: -ux, dirY: -uy)
+            }
         }
+
+        guard filled else { return (stroke, nil) }
+
+        let fill = Path { path in
+            guard length > 0.0001 else { return }
+
+            let ux = dx / length
+            let uy = dy / length
+
+            let clampedAngle = headAngle.clamped(to: 8...80)
+            let maxHeadFraction: CGFloat = doubleHeaded ? 0.45 : 0.6
+            let headLength = min(max(strokeWidth * headSize, strokeWidth * 2), length * maxHeadFraction)
+            let wingLength = headLength * tan((clampedAngle * .pi / 180))
+
+            func addFilledHead(tip: CGPoint, dirX: CGFloat, dirY: CGFloat) {
+                let base = CGPoint(x: tip.x - dirX * headLength,
+                                   y: tip.y - dirY * headLength)
+                let perp = CGPoint(x: -dirY, y: dirX)
+                let left = CGPoint(x: base.x + perp.x * wingLength,
+                                   y: base.y + perp.y * wingLength)
+                let right = CGPoint(x: base.x - perp.x * wingLength,
+                                    y: base.y - perp.y * wingLength)
+                path.move(to: tip)
+                path.addLine(to: left)
+                path.addLine(to: right)
+                path.closeSubpath()
+            }
+
+            addFilledHead(tip: end, dirX: ux, dirY: uy)
+            if doubleHeaded {
+                addFilledHead(tip: start, dirX: -ux, dirY: -uy)
+            }
+        }
+
+        return (stroke, fill)
     }
 
     // MARK: - Background

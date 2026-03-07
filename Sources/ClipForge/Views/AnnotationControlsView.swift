@@ -78,6 +78,15 @@ struct AnnotationControlsView: View {
                     LabeledSlider("End Y",   value: endYBinding(ann),        in: 0...1,  format: "%.2f")
                     LabeledSlider("Width",   value: strokeWidthBinding(ann), in: 1...20, format: "%.0f pt")
                     ColorPicker("Color", selection: strokeColorBinding(ann))
+
+                    if ann.kind == .arrow {
+                        Divider()
+                        LabeledSlider("Head Size", value: arrowHeadSizeBinding(ann), in: 2...12, format: "%.1fx")
+                        LabeledSlider("Head Angle", value: arrowHeadAngleBinding(ann), in: 10...70, format: "%.0f deg")
+                        Toggle("Double Headed", isOn: arrowDoubleHeadedBinding(ann))
+                        Toggle("Filled Heads", isOn: arrowFilledBinding(ann))
+                    }
+
                     Text("Drag on the video preview to redraw")
                         .font(.caption).foregroundColor(.secondary)
                 }
@@ -150,6 +159,15 @@ struct AnnotationControlsView: View {
                 } else {
                     LabeledSlider("Width", value: $vm.pendingAnnotationStrokeWidth, in: 1...20, format: "%.0f pt")
                     ColorPicker("Color", selection: pendingStrokeColorBinding)
+
+                    if vm.pendingAnnotationKind == .arrow {
+                        Divider()
+                        LabeledSlider("Head Size", value: $vm.pendingArrowHeadSize, in: 2...12, format: "%.1fx")
+                        LabeledSlider("Head Angle", value: $vm.pendingArrowHeadAngle, in: 10...70, format: "%.0f deg")
+                        Toggle("Double Headed", isOn: $vm.pendingArrowDoubleHeaded)
+                        Toggle("Filled Heads", isOn: $vm.pendingArrowFilled)
+                    }
+
                     Text("Drag on the video preview to draw")
                         .font(.caption).foregroundColor(.secondary)
                 }
@@ -249,6 +267,26 @@ struct AnnotationControlsView: View {
     private func strokeColorBinding(_ ann: Annotation) -> Binding<Color> {
         Binding(get: { (vm.selectedAnnotation?.strokeColor ?? ann.strokeColor).color },
                 set: { vm.updateAnnotation(id: ann.id, strokeColor: $0.toCodable()) })
+    }
+
+    private func arrowHeadSizeBinding(_ ann: Annotation) -> Binding<CGFloat> {
+        Binding(get: { vm.selectedAnnotation?.arrowHeadSize ?? ann.arrowHeadSize },
+                set: { vm.updateAnnotation(id: ann.id, arrowHeadSize: $0) })
+    }
+
+    private func arrowHeadAngleBinding(_ ann: Annotation) -> Binding<CGFloat> {
+        Binding(get: { vm.selectedAnnotation?.arrowHeadAngle ?? ann.arrowHeadAngle },
+                set: { vm.updateAnnotation(id: ann.id, arrowHeadAngle: $0) })
+    }
+
+    private func arrowDoubleHeadedBinding(_ ann: Annotation) -> Binding<Bool> {
+        Binding(get: { vm.selectedAnnotation?.arrowDoubleHeaded ?? ann.arrowDoubleHeaded },
+                set: { vm.updateAnnotation(id: ann.id, arrowDoubleHeaded: $0) })
+    }
+
+    private func arrowFilledBinding(_ ann: Annotation) -> Binding<Bool> {
+        Binding(get: { vm.selectedAnnotation?.arrowFilled ?? ann.arrowFilled },
+                set: { vm.updateAnnotation(id: ann.id, arrowFilled: $0) })
     }
 
     // MARK: - Bindings — selected annotation text styling

@@ -243,40 +243,73 @@ private func annotationTextSize(
     return CGSize(width: ceil(max(1, measured.width)), height: ceil(max(1, measured.height)))
 }
 
-private func annotationArrowPath(
+private func annotationArrowPaths(
     start: CGPoint,
     end: CGPoint,
-    strokeWidth: CGFloat
-) -> CGPath {
-    let path = CGMutablePath()
-    path.move(to: start)
-    path.addLine(to: end)
+    strokeWidth: CGFloat,
+    headSize: CGFloat,
+    headAngle: CGFloat,
+    doubleHeaded: Bool,
+    filled: Bool
+) -> (stroke: CGPath, fill: CGPath?) {
+    let stroke = CGMutablePath()
+    stroke.move(to: start)
+    stroke.addLine(to: end)
 
     let dx = end.x - start.x
     let dy = end.y - start.y
     let length = hypot(dx, dy)
-    guard length > 0.0001 else { return path }
+    guard length > 0.0001 else { return (stroke, nil) }
 
     let ux = dx / length
     let uy = dy / length
 
-    let headLength = min(max(strokeWidth * 4, 12), length * 0.6)
-    let wingLength = headLength * tan(.pi / 7)
+    let clampedAngle = headAngle.clamped(to: 8...80)
+    let maxHeadFraction: CGFloat = doubleHeaded ? 0.45 : 0.6
+    let headLength = min(max(strokeWidth * headSize, strokeWidth * 2), length * maxHeadFraction)
+    let wingLength = headLength * tan((clampedAngle * .pi / 180))
 
-    let base = CGPoint(x: end.x - ux * headLength,
-                       y: end.y - uy * headLength)
-    let perp = CGPoint(x: -uy, y: ux)
+    func headPoints(tip: CGPoint, dirX: CGFloat, dirY: CGFloat) -> (left: CGPoint, right: CGPoint) {
+        let base = CGPoint(x: tip.x - dirX * headLength,
+                           y: tip.y - dirY * headLength)
+        let perp = CGPoint(x: -dirY, y: dirX)
+        let left = CGPoint(x: base.x + perp.x * wingLength,
+                           y: base.y + perp.y * wingLength)
+        let right = CGPoint(x: base.x - perp.x * wingLength,
+                            y: base.y - perp.y * wingLength)
+        return (left, right)
+    }
 
-    let left = CGPoint(x: base.x + perp.x * wingLength,
-                       y: base.y + perp.y * wingLength)
-    let right = CGPoint(x: base.x - perp.x * wingLength,
-                        y: base.y - perp.y * wingLength)
+    func addStrokeHead(tip: CGPoint, dirX: CGFloat, dirY: CGFloat) {
+        let points = headPoints(tip: tip, dirX: dirX, dirY: dirY)
+        stroke.move(to: tip)
+        stroke.addLine(to: points.left)
+        stroke.move(to: tip)
+        stroke.addLine(to: points.right)
+    }
 
-    path.move(to: end)
-    path.addLine(to: left)
-    path.move(to: end)
-    path.addLine(to: right)
-    return path
+    addStrokeHead(tip: end, dirX: ux, dirY: uy)
+    if doubleHeaded {
+        addStrokeHead(tip: start, dirX: -ux, dirY: -uy)
+    }
+
+    guard filled else { return (stroke, nil) }
+
+    let fill = CGMutablePath()
+    func addFilledHead(tip: CGPoint, dirX: CGFloat, dirY: CGFloat) {
+        let points = headPoints(tip: tip, dirX: dirX, dirY: dirY)
+        fill.move(to: tip)
+        fill.addLine(to: points.left)
+        fill.addLine(to: points.right)
+        fill.closeSubpath()
+    }
+
+    addFilledHead(tip: end, dirX: ux, dirY: uy)
+    if doubleHeaded {
+        addFilledHead(tip: start, dirX: -ux, dirY: -uy)
+    }
+
+    return (stroke, fill)
 }
 
 // MARK: - Export errors
@@ -402,7 +435,11 @@ func exportVideo(
                               showBackground: ann.showBackground,
                               backgroundColor: ann.backgroundColor,
                               backgroundOpacity: ann.backgroundOpacity,
-                              backgroundCornerRadius: ann.backgroundCornerRadius)
+                              backgroundCornerRadius: ann.backgroundCornerRadius,
+                              arrowHeadSize: ann.arrowHeadSize,
+                              arrowHeadAngle: ann.arrowHeadAngle,
+                              arrowDoubleHeaded: ann.arrowDoubleHeaded,
+                              arrowFilled: ann.arrowFilled)
         }
 
     // ── 4. Layer instruction — eased zoom sampled at 30 fps ──────────────────
@@ -528,16 +565,29 @@ func exportVideo(
         let ey = vPad + ann.endPosition.y * renderSize.height
 
         var path: CGPath
+        var fillColor: CGColor = CGColor(red: 0, green: 0, blue: 0, alpha: 0)
         switch ann.kind {
         case .line:
             let p = CGMutablePath(); p.move(to: CGPoint(x: sx, y: sy))
             p.addLine(to: CGPoint(x: ex, y: ey)); path = p
         case .arrow:
-            path = annotationArrowPath(
+            let arrowPaths = annotationArrowPaths(
                 start: CGPoint(x: sx, y: sy),
                 end: CGPoint(x: ex, y: ey),
-                strokeWidth: ann.strokeWidth
+                strokeWidth: ann.strokeWidth,
+                headSize: ann.arrowHeadSize,
+                headAngle: ann.arrowHeadAngle,
+                doubleHeaded: ann.arrowDoubleHeaded,
+                filled: ann.arrowFilled
             )
+            path = arrowPaths.stroke
+            if ann.arrowFilled, let fillPath = arrowPaths.fill {
+                let merged = CGMutablePath()
+                merged.addPath(path)
+                merged.addPath(fillPath)
+                path = merged
+                fillColor = ann.strokeColor.cgColor
+            }
         case .rectangle:
             path = CGPath(rect: CGRect(x: min(sx, ex), y: min(sy, ey),
                                        width: abs(ex - sx), height: abs(ey - sy)),
@@ -551,7 +601,7 @@ func exportVideo(
 
         let shapeLayer            = CAShapeLayer()
         shapeLayer.path           = path
-        shapeLayer.fillColor      = CGColor(red: 0, green: 0, blue: 0, alpha: 0)
+        shapeLayer.fillColor      = fillColor
         shapeLayer.strokeColor    = ann.strokeColor.cgColor
         shapeLayer.lineWidth      = ann.strokeWidth
         shapeLayer.frame          = CGRect(origin: .zero, size: canvasSize)

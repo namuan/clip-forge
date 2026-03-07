@@ -69,6 +69,10 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var pendingAnnotationEndPosition: CGPoint = CGPoint(x: 0.75, y: 0.5)
     @Published var pendingAnnotationStrokeColor: CodableColor = .init(red: 1, green: 1, blue: 1)
     @Published var pendingAnnotationStrokeWidth: CGFloat = 3
+    @Published var pendingArrowHeadSize: CGFloat = 4.0
+    @Published var pendingArrowHeadAngle: CGFloat = 26
+    @Published var pendingArrowDoubleHeaded: Bool = false
+    @Published var pendingArrowFilled: Bool = false
 
     // Pending text styling
     @Published var pendingTextColor: CodableColor         = .init(red: 1, green: 1, blue: 1)
@@ -324,7 +328,11 @@ final class ClipForgeViewModel: ObservableObject {
             showBackground: pendingShowBackground,
             backgroundColor: pendingBackgroundColor,
             backgroundOpacity: pendingBackgroundOpacity,
-            backgroundCornerRadius: pendingBackgroundCornerRadius)
+            backgroundCornerRadius: pendingBackgroundCornerRadius,
+            arrowHeadSize: pendingArrowHeadSize,
+            arrowHeadAngle: pendingArrowHeadAngle,
+            arrowDoubleHeaded: pendingArrowDoubleHeaded,
+            arrowFilled: pendingArrowFilled)
         annotations.append(ann)
         pendingAnnotationText = ""
         selectedAnnotationID  = ann.id
@@ -341,7 +349,11 @@ final class ClipForgeViewModel: ObservableObject {
             position: pendingAnnotationPosition,
             endPosition: pendingAnnotationEndPosition,
             strokeColor: pendingAnnotationStrokeColor,
-            strokeWidth: pendingAnnotationStrokeWidth)
+            strokeWidth: pendingAnnotationStrokeWidth,
+            arrowHeadSize: pendingArrowHeadSize,
+            arrowHeadAngle: pendingArrowHeadAngle,
+            arrowDoubleHeaded: pendingArrowDoubleHeaded,
+            arrowFilled: pendingArrowFilled)
         annotations.append(ann)
         selectedAnnotationID = ann.id
         hasUnsavedChanges    = true
@@ -354,7 +366,9 @@ final class ClipForgeViewModel: ObservableObject {
                           textColor: CodableColor? = nil, fontSize: CGFloat? = nil,
                           fontWeight: TextFontWeight? = nil, showBackground: Bool? = nil,
                           backgroundColor: CodableColor? = nil, backgroundOpacity: Double? = nil,
-                          backgroundCornerRadius: CGFloat? = nil) {
+                          backgroundCornerRadius: CGFloat? = nil,
+                          arrowHeadSize: CGFloat? = nil, arrowHeadAngle: CGFloat? = nil,
+                          arrowDoubleHeaded: Bool? = nil, arrowFilled: Bool? = nil) {
         guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
         if let v = text                   { annotations[idx].text                   = v }
         if let v = startTime              { annotations[idx].startTime              = max(0, v) }
@@ -370,6 +384,10 @@ final class ClipForgeViewModel: ObservableObject {
         if let v = backgroundColor        { annotations[idx].backgroundColor        = v }
         if let v = backgroundOpacity      { annotations[idx].backgroundOpacity      = v }
         if let v = backgroundCornerRadius { annotations[idx].backgroundCornerRadius = v }
+        if let v = arrowHeadSize          { annotations[idx].arrowHeadSize          = max(1, v) }
+        if let v = arrowHeadAngle         { annotations[idx].arrowHeadAngle         = v.clamped(to: 8...80) }
+        if let v = arrowDoubleHeaded      { annotations[idx].arrowDoubleHeaded      = v }
+        if let v = arrowFilled            { annotations[idx].arrowFilled            = v }
         hasUnsavedChanges = true
     }
 

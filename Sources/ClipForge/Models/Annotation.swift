@@ -63,6 +63,12 @@ struct Annotation: Identifiable, Codable {
     var strokeColor: CodableColor
     var strokeWidth: CGFloat
 
+    // Arrow-only styling
+    var arrowHeadSize: CGFloat         // multiplier on stroke width
+    var arrowHeadAngle: CGFloat        // degrees from shaft direction
+    var arrowDoubleHeaded: Bool
+    var arrowFilled: Bool
+
     // Text-only styling
     var textColor: CodableColor         // foreground colour
     var fontSize: CGFloat               // fraction of video width (e.g. 0.03 = 3 %)
@@ -84,7 +90,11 @@ struct Annotation: Identifiable, Codable {
          showBackground: Bool            = false,
          backgroundColor: CodableColor  = .init(red: 0, green: 0, blue: 0),
          backgroundOpacity: Double       = 0.6,
-         backgroundCornerRadius: CGFloat = 6) {
+         backgroundCornerRadius: CGFloat = 6,
+         arrowHeadSize: CGFloat          = 4.0,
+         arrowHeadAngle: CGFloat         = 26,
+         arrowDoubleHeaded: Bool         = false,
+         arrowFilled: Bool               = false) {
         self.id = id; self.kind = kind; self.text = text
         self.startTime = startTime; self.duration = duration
         self.position = position; self.endPosition = endPosition
@@ -93,6 +103,10 @@ struct Annotation: Identifiable, Codable {
         self.showBackground = showBackground; self.backgroundColor = backgroundColor
         self.backgroundOpacity = backgroundOpacity
         self.backgroundCornerRadius = backgroundCornerRadius
+        self.arrowHeadSize = arrowHeadSize
+        self.arrowHeadAngle = arrowHeadAngle
+        self.arrowDoubleHeaded = arrowDoubleHeaded
+        self.arrowFilled = arrowFilled
     }
 
     // MARK: Codable — decodeIfPresent for new fields so old saved data still loads
@@ -102,6 +116,7 @@ struct Annotation: Identifiable, Codable {
         case strokeColor, strokeWidth
         case textColor, fontSize, fontWeight
         case showBackground, backgroundColor, backgroundOpacity, backgroundCornerRadius
+        case arrowHeadSize, arrowHeadAngle, arrowDoubleHeaded, arrowFilled
     }
 
     init(from decoder: Decoder) throws {
@@ -123,5 +138,9 @@ struct Annotation: Identifiable, Codable {
         backgroundColor       = try c.decodeIfPresent(CodableColor.self,    forKey: .backgroundColor)       ?? .init(red: 0, green: 0, blue: 0)
         backgroundOpacity     = try c.decodeIfPresent(Double.self,          forKey: .backgroundOpacity)     ?? 0.6
         backgroundCornerRadius = try c.decodeIfPresent(CGFloat.self,        forKey: .backgroundCornerRadius) ?? 6
+        arrowHeadSize         = try c.decodeIfPresent(CGFloat.self,         forKey: .arrowHeadSize)         ?? 4.0
+        arrowHeadAngle        = try c.decodeIfPresent(CGFloat.self,         forKey: .arrowHeadAngle)        ?? 26
+        arrowDoubleHeaded     = try c.decodeIfPresent(Bool.self,            forKey: .arrowDoubleHeaded)     ?? false
+        arrowFilled           = try c.decodeIfPresent(Bool.self,            forKey: .arrowFilled)           ?? false
     }
 }
