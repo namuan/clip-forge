@@ -12,13 +12,18 @@ private func easeInOut(_ t: Double) -> Double {
 
 // MARK: - Zoom transform helpers
 
-/// Builds a CGAffineTransform for a given scale/center, accounting for padding.
+/// Builds the in-frame zoom transform for a given scale and focus center.
 private func zoomTransform(
-    scale: CGFloat, center: CGPoint,
-    videoSize: CGSize, paddingX: CGFloat, paddingY: CGFloat
+    scale: CGFloat,
+    center: CGPoint,
+    videoSize: CGSize
 ) -> CGAffineTransform {
-    let tx = (videoSize.width  / 2) * (1 - scale) + (videoSize.width  * center.x * (scale - 1)) + paddingX
-    let ty = (videoSize.height / 2) * (1 - scale) + (videoSize.height * center.y * (scale - 1)) + paddingY
+    // Match preview semantics:
+    // - scale around frame center
+    // - then offset by (0.5 - center) * (scale - 1) * size
+    // Combined affine translation simplifies to center * (1 - scale) * size.
+    let tx = videoSize.width  * center.x * (1 - scale)
+    let ty = videoSize.height * center.y * (1 - scale)
     return CGAffineTransform(scaleX: scale, y: scale)
         .concatenating(CGAffineTransform(translationX: tx, y: ty))
 }
@@ -38,8 +43,8 @@ private func segmentZoomTransform(
     else { return base }
 
     let (scale, center) = seg.interpolated(localT: time - seg.startTime)
-    return zoomTransform(scale: scale, center: center, videoSize: videoSize, paddingX: paddingX, paddingY: paddingY)
-        .concatenating(preferredTransform)
+    let zoom = zoomTransform(scale: scale, center: center, videoSize: videoSize)
+    return base.concatenating(zoom)
 }
 
 /// Samples the eased zoom curve at `fps` and writes one linear ramp per frame,
