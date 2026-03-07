@@ -180,6 +180,7 @@ private struct RecentProjectRow: View {
                     .fill(Color(white: 0.93).opacity(isHovered ? 1 : 0.001)))
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onHover { isHovered = $0 }
         .contextMenu {
