@@ -3,6 +3,9 @@ import SwiftUI
 struct AnnotationControlsView: View {
     @ObservedObject var vm: ClipForgeViewModel
 
+    private enum Field: Hashable { case editText, addText }
+    @FocusState private var focusedField: Field?
+
     var body: some View {
         VStack(spacing: 12) {
             // Editor only when something is selected
@@ -13,6 +16,7 @@ struct AnnotationControlsView: View {
             // Add panel is always visible
             addPanel
         }
+        .focusedValue(\.anyTextFieldFocused, focusedField != nil)
     }
 
     // MARK: - Selected annotation editor
@@ -31,6 +35,7 @@ struct AnnotationControlsView: View {
                 if ann.kind == .text {
                     TextField("Text", text: textBinding(ann))
                         .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .editText)
                 }
 
                 LabeledSlider("Duration", value: durationBinding(ann), in: 0.3...30, format: "%.1fs")
@@ -40,11 +45,37 @@ struct AnnotationControlsView: View {
                     LabeledSlider("Position Y", value: posYBinding(ann), in: 0...1, format: "%.2f")
                     Text("Tap video preview to reposition")
                         .font(.caption).foregroundColor(.secondary)
+
+                    Divider()
+
+                    // ── Text styling ───────────────────────────────────────
+                    Picker("", selection: fontWeightBinding(ann)) {
+                        ForEach(TextFontWeight.allCases, id: \.self) { w in
+                            Text(w.rawValue).tag(w)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    LabeledSlider("Size", value: fontSizePctBinding(ann), in: 1...8, format: "%.1f%%")
+
+                    ColorPicker("Text Color", selection: textColorBinding(ann))
+
+                    Divider()
+
+                    // ── Background box ─────────────────────────────────────
+                    Toggle("Background Box", isOn: showBgBinding(ann))
+
+                    let showBg = vm.selectedAnnotation?.showBackground ?? ann.showBackground
+                    if showBg {
+                        ColorPicker("BG Color", selection: bgColorBinding(ann))
+                        LabeledSlider("Opacity", value: bgOpacityPctBinding(ann), in: 0...100, format: "%.0f%%")
+                        LabeledSlider("Corners", value: bgCornerBinding(ann),     in: 0...30,  format: "%.0f pt")
+                    }
                 } else {
-                    LabeledSlider("Start X", value: startXBinding(ann),   in: 0...1, format: "%.2f")
-                    LabeledSlider("Start Y", value: startYBinding(ann),   in: 0...1, format: "%.2f")
-                    LabeledSlider("End X",   value: endXBinding(ann),     in: 0...1, format: "%.2f")
-                    LabeledSlider("End Y",   value: endYBinding(ann),     in: 0...1, format: "%.2f")
+                    LabeledSlider("Start X", value: startXBinding(ann),      in: 0...1,  format: "%.2f")
+                    LabeledSlider("Start Y", value: startYBinding(ann),      in: 0...1,  format: "%.2f")
+                    LabeledSlider("End X",   value: endXBinding(ann),        in: 0...1,  format: "%.2f")
+                    LabeledSlider("End Y",   value: endYBinding(ann),        in: 0...1,  format: "%.2f")
                     LabeledSlider("Width",   value: strokeWidthBinding(ann), in: 1...20, format: "%.0f pt")
                     ColorPicker("Color", selection: strokeColorBinding(ann))
                     Text("Drag on the video preview to redraw")
@@ -91,6 +122,31 @@ struct AnnotationControlsView: View {
                 if vm.pendingAnnotationKind == .text {
                     TextField("Annotation text…", text: $vm.pendingAnnotationText)
                         .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .addText)
+
+                    Divider()
+
+                    // ── Text styling ───────────────────────────────────────
+                    Picker("", selection: $vm.pendingFontWeight) {
+                        ForEach(TextFontWeight.allCases, id: \.self) { w in
+                            Text(w.rawValue).tag(w)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    LabeledSlider("Size", value: pendingFontSizePctBinding, in: 1...8, format: "%.1f%%")
+
+                    ColorPicker("Text Color", selection: pendingTextColorBinding)
+
+                    Divider()
+
+                    Toggle("Background Box", isOn: $vm.pendingShowBackground)
+
+                    if vm.pendingShowBackground {
+                        ColorPicker("BG Color", selection: pendingBgColorBinding)
+                        LabeledSlider("Opacity", value: pendingBgOpacityPctBinding, in: 0...100, format: "%.0f%%")
+                        LabeledSlider("Corners", value: $vm.pendingBackgroundCornerRadius,        in: 0...30,  format: "%.0f pt")
+                    }
                 } else {
                     LabeledSlider("Width", value: $vm.pendingAnnotationStrokeWidth, in: 1...20, format: "%.0f pt")
                     ColorPicker("Color", selection: pendingStrokeColorBinding)
@@ -193,6 +249,65 @@ struct AnnotationControlsView: View {
     private func strokeColorBinding(_ ann: Annotation) -> Binding<Color> {
         Binding(get: { (vm.selectedAnnotation?.strokeColor ?? ann.strokeColor).color },
                 set: { vm.updateAnnotation(id: ann.id, strokeColor: $0.toCodable()) })
+    }
+
+    // MARK: - Bindings — selected annotation text styling
+
+    private func fontWeightBinding(_ ann: Annotation) -> Binding<TextFontWeight> {
+        Binding(get: { vm.selectedAnnotation?.fontWeight ?? ann.fontWeight },
+                set: { vm.updateAnnotation(id: ann.id, fontWeight: $0) })
+    }
+
+    private func fontSizePctBinding(_ ann: Annotation) -> Binding<CGFloat> {
+        Binding(get: { (vm.selectedAnnotation?.fontSize ?? ann.fontSize) * 100 },
+                set: { vm.updateAnnotation(id: ann.id, fontSize: $0 / 100) })
+    }
+
+    private func textColorBinding(_ ann: Annotation) -> Binding<Color> {
+        Binding(get: { (vm.selectedAnnotation?.textColor ?? ann.textColor).color },
+                set: { vm.updateAnnotation(id: ann.id, textColor: $0.toCodable()) })
+    }
+
+    private func showBgBinding(_ ann: Annotation) -> Binding<Bool> {
+        Binding(get: { vm.selectedAnnotation?.showBackground ?? ann.showBackground },
+                set: { vm.updateAnnotation(id: ann.id, showBackground: $0) })
+    }
+
+    private func bgColorBinding(_ ann: Annotation) -> Binding<Color> {
+        Binding(get: { (vm.selectedAnnotation?.backgroundColor ?? ann.backgroundColor).color },
+                set: { vm.updateAnnotation(id: ann.id, backgroundColor: $0.toCodable()) })
+    }
+
+    private func bgOpacityPctBinding(_ ann: Annotation) -> Binding<Double> {
+        Binding(get: { (vm.selectedAnnotation?.backgroundOpacity ?? ann.backgroundOpacity) * 100 },
+                set: { vm.updateAnnotation(id: ann.id, backgroundOpacity: $0 / 100) })
+    }
+
+    private func bgCornerBinding(_ ann: Annotation) -> Binding<CGFloat> {
+        Binding(get: { vm.selectedAnnotation?.backgroundCornerRadius ?? ann.backgroundCornerRadius },
+                set: { vm.updateAnnotation(id: ann.id, backgroundCornerRadius: $0) })
+    }
+
+    // MARK: - Bindings — pending text styling
+
+    private var pendingTextColorBinding: Binding<Color> {
+        Binding(get: { vm.pendingTextColor.color },
+                set: { vm.pendingTextColor = $0.toCodable() })
+    }
+
+    private var pendingBgColorBinding: Binding<Color> {
+        Binding(get: { vm.pendingBackgroundColor.color },
+                set: { vm.pendingBackgroundColor = $0.toCodable() })
+    }
+
+    private var pendingFontSizePctBinding: Binding<CGFloat> {
+        Binding(get: { vm.pendingFontSize * 100 },
+                set: { vm.pendingFontSize = $0 / 100 })
+    }
+
+    private var pendingBgOpacityPctBinding: Binding<Double> {
+        Binding(get: { vm.pendingBackgroundOpacity * 100 },
+                set: { vm.pendingBackgroundOpacity = $0 / 100 })
     }
 
     // MARK: - Binding — pending stroke color

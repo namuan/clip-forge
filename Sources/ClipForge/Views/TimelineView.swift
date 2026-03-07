@@ -1,7 +1,14 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct TimelineView: View {
     @ObservedObject var vm: ClipForgeViewModel
+
+    #if canImport(AppKit)
+    @State private var keyMonitor: Any?
+    #endif
 
     var body: some View {
         VStack(spacing: 6) {
@@ -39,7 +46,7 @@ struct TimelineView: View {
                 TransportButton(systemImage: "backward.frame.fill", size: 20) {
                     vm.stepBack()
                 }
-                .keyboardShortcut(.leftArrow, modifiers: [])
+                // bare ← handled by NSEvent monitor below (skips when text field focused)
 
                 TransportButton(
                     systemImage: vm.isPlaying ? "pause.fill" : "play.fill",
@@ -52,7 +59,7 @@ struct TimelineView: View {
                 TransportButton(systemImage: "forward.frame.fill", size: 20) {
                     vm.stepForward()
                 }
-                .keyboardShortcut(.rightArrow, modifiers: [])
+                // bare → handled by NSEvent monitor below (skips when text field focused)
 
                 TransportButton(systemImage: "forward.end.fill", size: 18) {
                     vm.seek(to: vm.duration)
@@ -65,7 +72,37 @@ struct TimelineView: View {
             .disabled(vm.player == nil)
         }
         .padding(.horizontal)
+        #if canImport(AppKit)
+        .onAppear  { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
+        #endif
     }
+
+    #if canImport(AppKit)
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Only handle bare left / right (no modifiers)
+            guard event.modifierFlags
+                    .intersection(.deviceIndependentFlagsMask)
+                    .isEmpty
+            else { return event }
+
+            // Pass through when any text view has first responder
+            if NSApp.keyWindow?.firstResponder is NSTextView { return event }
+
+            switch event.keyCode {
+            case 123: vm.stepBack();    return nil   // ←
+            case 124: vm.stepForward(); return nil   // →
+            default:  return event
+            }
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let m = keyMonitor { NSEvent.removeMonitor(m) }
+        keyMonitor = nil
+    }
+    #endif
 
     private func formatTime(_ t: Double) -> String {
         let t = max(0, t)

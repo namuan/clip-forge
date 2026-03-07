@@ -34,6 +34,15 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var pendingAnnotationStrokeColor: CodableColor = .init(red: 1, green: 1, blue: 1)
     @Published var pendingAnnotationStrokeWidth: CGFloat = 3
 
+    // Pending text styling
+    @Published var pendingTextColor: CodableColor         = .init(red: 1, green: 1, blue: 1)
+    @Published var pendingFontSize: CGFloat               = 0.03
+    @Published var pendingFontWeight: TextFontWeight      = .bold
+    @Published var pendingShowBackground: Bool            = false
+    @Published var pendingBackgroundColor: CodableColor   = .init(red: 0, green: 0, blue: 0)
+    @Published var pendingBackgroundOpacity: Double       = 0.6
+    @Published var pendingBackgroundCornerRadius: CGFloat = 6
+
     // MARK: - Canvas / background
     @Published var backgroundSettings: BackgroundSettings = BackgroundSettings()
 
@@ -183,7 +192,14 @@ final class ClipForgeViewModel: ObservableObject {
             position: pendingAnnotationPosition,
             endPosition: pendingAnnotationEndPosition,
             strokeColor: pendingAnnotationStrokeColor,
-            strokeWidth: pendingAnnotationStrokeWidth)
+            strokeWidth: pendingAnnotationStrokeWidth,
+            textColor: pendingTextColor,
+            fontSize: pendingFontSize,
+            fontWeight: pendingFontWeight,
+            showBackground: pendingShowBackground,
+            backgroundColor: pendingBackgroundColor,
+            backgroundOpacity: pendingBackgroundOpacity,
+            backgroundCornerRadius: pendingBackgroundCornerRadius)
         annotations.append(ann)
         pendingAnnotationText = ""
         selectedAnnotationID = ann.id
@@ -207,15 +223,26 @@ final class ClipForgeViewModel: ObservableObject {
     func updateAnnotation(id: UUID, text: String? = nil, startTime: Double? = nil,
                           duration: Double? = nil, position: CGPoint? = nil,
                           endPosition: CGPoint? = nil,
-                          strokeColor: CodableColor? = nil, strokeWidth: CGFloat? = nil) {
+                          strokeColor: CodableColor? = nil, strokeWidth: CGFloat? = nil,
+                          textColor: CodableColor? = nil, fontSize: CGFloat? = nil,
+                          fontWeight: TextFontWeight? = nil, showBackground: Bool? = nil,
+                          backgroundColor: CodableColor? = nil, backgroundOpacity: Double? = nil,
+                          backgroundCornerRadius: CGFloat? = nil) {
         guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
-        if let v = text        { annotations[idx].text        = v }
-        if let v = startTime   { annotations[idx].startTime   = max(0, v) }
-        if let v = duration    { annotations[idx].duration    = max(0.3, v) }
-        if let v = position    { annotations[idx].position    = v }
-        if let v = endPosition { annotations[idx].endPosition = v }
-        if let v = strokeColor { annotations[idx].strokeColor = v }
-        if let v = strokeWidth { annotations[idx].strokeWidth = v }
+        if let v = text                  { annotations[idx].text                  = v }
+        if let v = startTime             { annotations[idx].startTime             = max(0, v) }
+        if let v = duration              { annotations[idx].duration              = max(0.3, v) }
+        if let v = position              { annotations[idx].position              = v }
+        if let v = endPosition           { annotations[idx].endPosition           = v }
+        if let v = strokeColor           { annotations[idx].strokeColor           = v }
+        if let v = strokeWidth           { annotations[idx].strokeWidth           = v }
+        if let v = textColor             { annotations[idx].textColor             = v }
+        if let v = fontSize              { annotations[idx].fontSize              = max(0.005, v) }
+        if let v = fontWeight            { annotations[idx].fontWeight            = v }
+        if let v = showBackground        { annotations[idx].showBackground        = v }
+        if let v = backgroundColor       { annotations[idx].backgroundColor       = v }
+        if let v = backgroundOpacity     { annotations[idx].backgroundOpacity     = v }
+        if let v = backgroundCornerRadius { annotations[idx].backgroundCornerRadius = v }
     }
 
     func removeAnnotation(id: UUID) {

@@ -196,7 +196,14 @@ func exportVideo(
                        position: ann.position,
                        endPosition: ann.endPosition,
                        strokeColor: ann.strokeColor,
-                       strokeWidth: ann.strokeWidth)
+                       strokeWidth: ann.strokeWidth,
+                       textColor: ann.textColor,
+                       fontSize: ann.fontSize,
+                       fontWeight: ann.fontWeight,
+                       showBackground: ann.showBackground,
+                       backgroundColor: ann.backgroundColor,
+                       backgroundOpacity: ann.backgroundOpacity,
+                       backgroundCornerRadius: ann.backgroundCornerRadius)
         }
 
     // ── 4. Layer instruction — eased zoom sampled at 30 fps ──────────────────
@@ -259,38 +266,66 @@ func exportVideo(
 
     // Text annotations
     for ann in adjustedAnnotations where ann.kind == .text {
-        let textLayer        = CATextLayer()
-        textLayer.string     = ann.text
-        textLayer.fontSize   = max(24, renderSize.width * 0.025)
-        textLayer.foregroundColor = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
-        textLayer.shadowColor    = CGColor(red: 0, green: 0, blue: 0, alpha: 0.8)
-        textLayer.shadowOffset   = CGSize(width: 1, height: 1)
-        textLayer.shadowRadius   = 3
-        textLayer.shadowOpacity  = 1
-        textLayer.alignmentMode  = .center
-        textLayer.isWrapped      = true
+        let actualFontSize = max(12, ann.fontSize * renderSize.width)
+
+        // Build CATextLayer font with correct weight via CoreText
+        let traits: [CFString: Any] = [kCTFontWeightTrait: ann.fontWeight.ctWeight]
+        let desc   = CTFontDescriptorCreateWithAttributes(traits as CFDictionary)
+        let ctFont = CTFontCreateWithFontDescriptor(desc, actualFontSize, nil)
 
         let w: CGFloat = renderSize.width * 0.8
-        let h: CGFloat = renderSize.height * 0.08
+        let h: CGFloat = max(actualFontSize * 2, renderSize.height * 0.08)
         let x = hPad + ann.position.x * renderSize.width  - w / 2
         let y = vPad + ann.position.y * renderSize.height - h / 2
+
+        func makeVisibilityGroup() -> CAAnimationGroup {
+            let fadeIn           = CABasicAnimation(keyPath: "opacity")
+            fadeIn.fromValue = 0; fadeIn.toValue = 1
+            fadeIn.beginTime = 0; fadeIn.duration = 0.3; fadeIn.fillMode = .forwards
+            let fadeOut          = CABasicAnimation(keyPath: "opacity")
+            fadeOut.fromValue = 1; fadeOut.toValue = 0
+            fadeOut.beginTime = ann.duration - 0.3; fadeOut.duration = 0.3; fadeOut.fillMode = .forwards
+            let group            = CAAnimationGroup()
+            group.animations     = [fadeIn, fadeOut]
+            group.beginTime      = ann.startTime
+            group.duration       = ann.duration
+            group.fillMode       = .both
+            group.isRemovedOnCompletion = false
+            return group
+        }
+
+        // Background box
+        if ann.showBackground {
+            let hPadding = actualFontSize * 0.4
+            let vPadding = actualFontSize * 0.25
+            let bgLayer  = CALayer()
+            bgLayer.frame = CGRect(x: x - hPadding, y: y - vPadding,
+                                   width: w + 2 * hPadding, height: h + 2 * vPadding)
+            let bg = ann.backgroundColor
+            bgLayer.backgroundColor = CGColor(red: bg.red, green: bg.green, blue: bg.blue,
+                                              alpha: ann.backgroundOpacity)
+            bgLayer.cornerRadius = ann.backgroundCornerRadius
+            bgLayer.opacity      = 0
+            bgLayer.add(makeVisibilityGroup(), forKey: "visibility")
+            parentLayer.addSublayer(bgLayer)
+        }
+
+        let textLayer             = CATextLayer()
+        textLayer.string          = ann.text
+        textLayer.font            = ctFont
+        textLayer.fontSize        = actualFontSize
+        textLayer.foregroundColor = ann.textColor.cgColor
+        textLayer.alignmentMode   = .center
+        textLayer.isWrapped       = true
+        if !ann.showBackground {
+            textLayer.shadowColor   = CGColor(red: 0, green: 0, blue: 0, alpha: 0.8)
+            textLayer.shadowOffset  = CGSize(width: 1, height: 1)
+            textLayer.shadowRadius  = 3
+            textLayer.shadowOpacity = 1
+        }
         textLayer.frame   = CGRect(x: x, y: y, width: w, height: h)
         textLayer.opacity = 0
-
-        let group            = CAAnimationGroup()
-        let fadeIn           = CABasicAnimation(keyPath: "opacity")
-        fadeIn.fromValue = 0; fadeIn.toValue = 1
-        fadeIn.beginTime = 0; fadeIn.duration = 0.3; fadeIn.fillMode = .forwards
-        let fadeOut          = CABasicAnimation(keyPath: "opacity")
-        fadeOut.fromValue = 1; fadeOut.toValue = 0
-        fadeOut.beginTime = ann.duration - 0.3; fadeOut.duration = 0.3; fadeOut.fillMode = .forwards
-        group.animations     = [fadeIn, fadeOut]
-        group.beginTime      = ann.startTime
-        group.duration       = ann.duration
-        group.fillMode       = .both
-        group.isRemovedOnCompletion = false
-        textLayer.add(group, forKey: "visibility")
-
+        textLayer.add(makeVisibilityGroup(), forKey: "visibility")
         parentLayer.addSublayer(textLayer)
     }
 

@@ -63,11 +63,21 @@ struct VideoPlayerView: View {
             // Text annotations
             ForEach(visible.filter { $0.kind == .text }) { ann in
                 Text(ann.text)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.8), radius: 3, x: 1, y: 1)
+                    .font(.system(size: max(8, ann.fontSize * videoW),
+                                  weight: ann.fontWeight.swiftUIWeight))
+                    .foregroundColor(ann.textColor.color)
+                    .shadow(color: ann.showBackground ? .clear : .black.opacity(0.8),
+                            radius: ann.showBackground ? 0 : 3, x: 1, y: 1)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, ann.showBackground ? 8 : 0)
+                    .padding(.vertical,   ann.showBackground ? 4 : 0)
+                    .background {
+                        if ann.showBackground {
+                            RoundedRectangle(cornerRadius: ann.backgroundCornerRadius)
+                                .fill(ann.backgroundColor.color
+                                        .opacity(ann.backgroundOpacity))
+                        }
+                    }
                     .position(x: ann.position.x * videoW,
                               y: ann.position.y * videoH)
                     .transition(.opacity)
