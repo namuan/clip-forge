@@ -53,7 +53,6 @@ struct ClipControlsView: View {
                 .padding(.top, 4)
             }
         }
-        .padding(.horizontal)
     }
 
     // MARK: - Trim bindings

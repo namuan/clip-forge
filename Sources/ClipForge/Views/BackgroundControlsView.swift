@@ -69,7 +69,6 @@ struct BackgroundControlsView: View {
             }
             .padding(.top, 4)
         }
-        .padding(.horizontal)
         .onAppear { syncColorState() }
         .onChange(of: vm.backgroundSettings.gradientStart) { _, _ in syncColorState() }
         .onChange(of: vm.backgroundSettings.gradientEnd)   { _, _ in syncColorState() }

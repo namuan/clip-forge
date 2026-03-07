@@ -63,7 +63,6 @@ struct ZoomControlsView: View {
             }
             .padding(.top, 4)
         }
-        .padding(.horizontal)
     }
 
     // MARK: - Empty state
@@ -86,7 +85,6 @@ struct ZoomControlsView: View {
             }
             .padding(.top, 4)
         }
-        .padding(.horizontal)
     }
 
     // MARK: - Bindings into the segment array

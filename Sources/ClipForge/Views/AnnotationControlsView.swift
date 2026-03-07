@@ -73,7 +73,6 @@ struct AnnotationControlsView: View {
             }
             .padding(.top, 4)
         }
-        .padding(.horizontal)
     }
 
     // MARK: - Add panel (always visible)
@@ -124,7 +123,6 @@ struct AnnotationControlsView: View {
             }
             .padding(.top, 4)
         }
-        .padding(.horizontal)
     }
 
     // MARK: - Bindings — selected annotation

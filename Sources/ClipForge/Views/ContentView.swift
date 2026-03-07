@@ -141,6 +141,7 @@ struct ContentView: View {
                         case .clip:   ClipControlsView(vm: vm)
                         }
                     }
+                    .padding(.horizontal, 12)
                     .padding(.top, 8)
 
                     // ── Keyframe & annotation lists ────────────────────────
