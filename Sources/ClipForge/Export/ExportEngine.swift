@@ -169,7 +169,6 @@ private func annotationTextImage(
     drawsShadow: Bool
 ) -> CGImage? {
     let textRasterScale: CGFloat = 2
-    let textInset: CGFloat = 2
     let shadowBlur: CGFloat = 3
 
     let drawSize = CGSize(width: max(1, size.width), height: max(1, size.height))
@@ -199,7 +198,7 @@ private func annotationTextImage(
     let attributed = NSAttributedString(string: text, attributes: attrs)
     let framesetter = CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
 
-    let textRect = CGRect(origin: .zero, size: drawSize).insetBy(dx: textInset, dy: textInset)
+    let textRect = CGRect(origin: .zero, size: drawSize)
     let path = CGMutablePath()
     path.addRect(textRect)
     let frame = CTFramesetterCreateFrame(
@@ -211,7 +210,7 @@ private func annotationTextImage(
 
     if drawsShadow {
         ctx.setShadow(
-            offset: CGSize(width: 1, height: -1),
+            offset: CGSize(width: 1, height: 1),
             blur: shadowBlur,
             color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.8)
         )
@@ -219,6 +218,29 @@ private func annotationTextImage(
 
     CTFrameDraw(frame, ctx)
     return ctx.makeImage()
+}
+
+private func annotationTextSize(
+    text: String,
+    font: CTFont,
+    maxWidth: CGFloat
+) -> CGSize {
+    let style = annotationParagraphStyle()
+    let attrs: [NSAttributedString.Key: Any] = [
+        NSAttributedString.Key(rawValue: kCTFontAttributeName as String): font,
+        NSAttributedString.Key(rawValue: kCTParagraphStyleAttributeName as String): style
+    ]
+    let attributed = NSAttributedString(string: text, attributes: attrs)
+    let framesetter = CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
+    let constraint = CGSize(width: max(1, maxWidth), height: .greatestFiniteMagnitude)
+    let measured = CTFramesetterSuggestFrameSizeWithConstraints(
+        framesetter,
+        CFRange(location: 0, length: attributed.length),
+        nil,
+        constraint,
+        nil
+    )
+    return CGSize(width: ceil(max(1, measured.width)), height: ceil(max(1, measured.height)))
 }
 
 // MARK: - Export errors
@@ -408,13 +430,23 @@ func exportVideo(
 
     // Text annotations
     for ann in adjustedAnnotations where ann.kind == .text {
-        let actualFontSize = max(12, ann.fontSize * renderSize.width)
+        let actualFontSize = max(8, ann.fontSize * renderSize.width)
         let ctFont = annotationCTFont(size: actualFontSize, weight: ann.fontWeight.ctWeight)
 
-        let w: CGFloat = renderSize.width * 0.8
-        let h: CGFloat = max(actualFontSize * 2, renderSize.height * 0.08)
-        let x = hPad + ann.position.x * renderSize.width  - w / 2
-        let y = vPad + ann.position.y * renderSize.height - h / 2
+        // Match preview layout: intrinsic text size + fixed background paddings.
+        let bgPaddingX: CGFloat = ann.showBackground ? 8 : 0
+        let bgPaddingY: CGFloat = ann.showBackground ? 4 : 0
+        let maxTextWidth = max(1, renderSize.width - (bgPaddingX * 2))
+        let textSize = annotationTextSize(text: ann.text, font: ctFont, maxWidth: maxTextWidth)
+
+        let centerX = hPad + ann.position.x * renderSize.width
+        let centerY = vPad + ann.position.y * renderSize.height
+        let textFrame = CGRect(
+            x: centerX - textSize.width / 2,
+            y: centerY - textSize.height / 2,
+            width: textSize.width,
+            height: textSize.height
+        )
 
         let visibility = makeVisibilityOpacityAnimation(
             startTime: ann.startTime,
@@ -424,11 +456,8 @@ func exportVideo(
 
         // Background box
         if ann.showBackground {
-            let hPadding = actualFontSize * 0.4
-            let vPadding = actualFontSize * 0.25
-            let bgLayer  = CALayer()
-            bgLayer.frame = CGRect(x: x - hPadding, y: y - vPadding,
-                                   width: w + 2 * hPadding, height: h + 2 * vPadding)
+            let bgLayer = CALayer()
+            bgLayer.frame = textFrame.insetBy(dx: -bgPaddingX, dy: -bgPaddingY)
             let bg = ann.backgroundColor
             bgLayer.backgroundColor = CGColor(red: bg.red, green: bg.green, blue: bg.blue,
                                               alpha: ann.backgroundOpacity)
@@ -443,12 +472,12 @@ func exportVideo(
             text: ann.text,
             font: ctFont,
             textColor: ann.textColor.cgColor,
-            size: CGSize(width: w, height: h),
+            size: textSize,
             drawsShadow: !ann.showBackground
         )
         textLayer.contentsScale = 2
         textLayer.contentsGravity = .resize
-        textLayer.frame   = CGRect(x: x, y: y, width: w, height: h)
+        textLayer.frame = textFrame
         textLayer.opacity = 1
         textLayer.add(visibility, forKey: "visibility")
         parentLayer.addSublayer(textLayer)
