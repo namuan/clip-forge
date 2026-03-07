@@ -25,8 +25,8 @@ private enum ControlPanel: String, CaseIterable {
 struct ContentView: View {
     @StateObject private var vm = ClipForgeViewModel()
 
-    @State private var showFilePicker  = false
-    @State private var showShareSheet  = false
+    @State private var showFilePicker = false
+    @State private var showShareSheet = false
     @State private var activePanel: ControlPanel = .zoom
 
     #if canImport(UIKit)
@@ -35,80 +35,21 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-
-                    // ── Video preview ──────────────────────────────────────
-                    VideoPlayerView(vm: vm)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-
-                    // ── Empty state ────────────────────────────────────────
-                    if vm.player == nil {
-                        ContentUnavailableView(
-                            "No Video",
-                            systemImage: "film",
-                            description: Text("Tap \"Load Video\" to get started.")
-                        )
-                        .frame(height: 160)
-                        .padding(.horizontal)
-                    }
-
-                    if vm.player != nil {
-
-                        // ── Transport + scrub ──────────────────────────────
-                        TimelineView(vm: vm)
-                            .padding(.top, 10)
-
-                        // ── Visual keyframe / annotation timeline ──────────
-                        VisualTimelineView(vm: vm)
-                            .padding(.top, 6)
-
-                        Divider().padding(.vertical, 12)
-
-                        // ── Control panel tabs ─────────────────────────────
-                        Picker("", selection: $activePanel) {
-                            ForEach(ControlPanel.allCases, id: \.self) { panel in
-                                Label(panel.rawValue, systemImage: panel.icon).tag(panel)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal)
-
-                        // ── Active panel ───────────────────────────────────
-                        Group {
-                            switch activePanel {
-                            case .zoom:
-                                ZoomControlsView(vm: vm)
-                            case .text:
-                                AnnotationControlsView(vm: vm)
-                            case .canvas:
-                                BackgroundControlsView(vm: vm)
-                            case .clip:
-                                ClipControlsView(vm: vm)
-                            }
-                        }
-                        .padding(.top, 8)
-
-                        // ── Keyframe & annotation lists ────────────────────
-                        KeyframeListView(vm: vm)
-                            .padding(.top, 4)
-                    }
-
-                    // ── Export progress ────────────────────────────────────
-                    if vm.isExporting {
-                        GroupBox {
-                            HStack {
-                                ProgressView()
-                                Text("Exporting…").foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    }
-
-                    Spacer(minLength: 32)
+            Group {
+                #if canImport(AppKit)
+                HSplitView {
+                    leftColumn
+                        .frame(minWidth: 360, maxWidth: .infinity)
+                    rightColumn
+                        .frame(minWidth: 200, maxWidth: 480)
                 }
+                #else
+                HStack(spacing: 0) {
+                    leftColumn
+                    Divider()
+                    rightColumn
+                }
+                #endif
             }
             .navigationTitle("ClipForge")
             #if canImport(UIKit)
@@ -149,6 +90,80 @@ struct ContentView: View {
             }
         }
         #endif
+    }
+
+    // MARK: - Columns
+
+    private var leftColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VideoPlayerView(vm: vm)
+                .frame(maxWidth: .infinity)
+
+            if vm.player == nil {
+                ContentUnavailableView(
+                    "No Video",
+                    systemImage: "film",
+                    description: Text("Load a video to get started.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                TimelineView(vm: vm)
+                    .padding(.top, 8)
+
+                VisualTimelineView(vm: vm)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var rightColumn: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                if vm.player != nil {
+
+                    // ── Control panel tabs ─────────────────────────────────
+                    Picker("", selection: $activePanel) {
+                        ForEach(ControlPanel.allCases, id: \.self) { panel in
+                            Label(panel.rawValue, systemImage: panel.icon).tag(panel)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding([.horizontal, .top], 12)
+
+                    // ── Active panel ───────────────────────────────────────
+                    Group {
+                        switch activePanel {
+                        case .zoom:   ZoomControlsView(vm: vm)
+                        case .text:   AnnotationControlsView(vm: vm)
+                        case .canvas: BackgroundControlsView(vm: vm)
+                        case .clip:   ClipControlsView(vm: vm)
+                        }
+                    }
+                    .padding(.top, 8)
+
+                    // ── Keyframe & annotation lists ────────────────────────
+                    KeyframeListView(vm: vm)
+                        .padding(.top, 4)
+                }
+
+                // ── Export progress ────────────────────────────────────────
+                if vm.isExporting {
+                    GroupBox {
+                        HStack {
+                            ProgressView()
+                            Text("Exporting…").foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                }
+
+                Spacer(minLength: 24)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Toolbar
