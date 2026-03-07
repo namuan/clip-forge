@@ -39,9 +39,9 @@ struct ContentView: View {
                 #if canImport(AppKit)
                 HSplitView {
                     leftColumn
-                        .frame(minWidth: 360, maxWidth: .infinity)
+                        .frame(minWidth: 400, maxWidth: .infinity)
                     rightColumn
-                        .frame(minWidth: 200, maxWidth: 480)
+                        .frame(minWidth: 200, maxWidth: 300)
                 }
                 #else
                 HStack(spacing: 0) {
