@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreGraphics
+import CoreText
 import QuartzCore
 import Foundation
 
@@ -91,6 +92,129 @@ private func applyEasedZoomRamps(
     }
 }
 
+/// Creates a robust timeline opacity animation for export overlays.
+/// Uses the full export timeline to avoid beginTime drift across layer trees.
+private func makeVisibilityOpacityAnimation(
+    startTime: Double,
+    duration: Double,
+    totalDuration: Double
+) -> CAKeyframeAnimation {
+    let total = max(0.001, totalDuration)
+    let start = max(0, min(startTime, total))
+    let end = max(start, min(start + max(0, duration), total))
+    let fade = min(0.3, (end - start) / 2)
+    let fadeInEnd = min(end, start + fade)
+    let fadeOutStart = max(start, end - fade)
+
+    let anim = CAKeyframeAnimation(keyPath: "opacity")
+    anim.values = [0, 0, 1, 1, 0, 0]
+    anim.keyTimes = [
+        0,
+        NSNumber(value: start / total),
+        NSNumber(value: fadeInEnd / total),
+        NSNumber(value: fadeOutStart / total),
+        NSNumber(value: end / total),
+        1
+    ]
+    anim.beginTime = AVCoreAnimationBeginTimeAtZero
+    anim.duration = total
+    anim.isRemovedOnCompletion = false
+    anim.fillMode = .both
+    anim.calculationMode = .linear
+    return anim
+}
+
+/// Builds a CoreText font descriptor with the requested weight for export text layers.
+private func annotationCTFont(size: CGFloat, weight: CGFloat) -> CTFont {
+    let traits: [CFString: Any] = [kCTFontWeightTrait: weight]
+    let attrs: [CFString: Any] = [
+        kCTFontNameAttribute: "HelveticaNeue" as CFString,
+        kCTFontTraitsAttribute: traits as CFDictionary
+    ]
+    let desc = CTFontDescriptorCreateWithAttributes(attrs as CFDictionary)
+    return CTFontCreateWithFontDescriptor(desc, size, nil)
+}
+
+private func annotationParagraphStyle() -> CTParagraphStyle {
+    var alignment = CTTextAlignment.center
+    var lineBreak = CTLineBreakMode.byWordWrapping
+
+    return withUnsafePointer(to: &alignment) { alignmentPtr in
+        withUnsafePointer(to: &lineBreak) { lineBreakPtr in
+            var settings: [CTParagraphStyleSetting] = [
+                CTParagraphStyleSetting(
+                    spec: .alignment,
+                    valueSize: MemoryLayout<CTTextAlignment>.size,
+                    value: alignmentPtr
+                ),
+                CTParagraphStyleSetting(
+                    spec: .lineBreakMode,
+                    valueSize: MemoryLayout<CTLineBreakMode>.size,
+                    value: lineBreakPtr
+                )
+            ]
+            return CTParagraphStyleCreate(&settings, settings.count)
+        }
+    }
+}
+
+private func annotationTextImage(
+    text: String,
+    font: CTFont,
+    textColor: CGColor,
+    size: CGSize,
+    drawsShadow: Bool
+) -> CGImage? {
+    let drawSize = CGSize(width: max(1, size.width), height: max(1, size.height))
+    let scale: CGFloat = 2
+    let pixelW = max(1, Int(ceil(drawSize.width * scale)))
+    let pixelH = max(1, Int(ceil(drawSize.height * scale)))
+
+    guard let ctx = CGContext(
+        data: nil,
+        width: pixelW,
+        height: pixelH,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+
+    ctx.scaleBy(x: scale, y: scale)
+    ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0))
+    ctx.fill(CGRect(origin: .zero, size: drawSize))
+
+    let style = annotationParagraphStyle()
+    let attrs: [NSAttributedString.Key: Any] = [
+        NSAttributedString.Key(rawValue: kCTFontAttributeName as String): font,
+        NSAttributedString.Key(rawValue: kCTForegroundColorAttributeName as String): textColor,
+        NSAttributedString.Key(rawValue: kCTParagraphStyleAttributeName as String): style
+    ]
+    let attributed = NSAttributedString(string: text, attributes: attrs)
+    let framesetter = CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
+
+    let textRect = CGRect(origin: .zero, size: drawSize).insetBy(dx: 2, dy: 2)
+    let path = CGMutablePath()
+    path.addRect(textRect)
+    let frame = CTFramesetterCreateFrame(
+        framesetter,
+        CFRange(location: 0, length: attributed.length),
+        path,
+        nil
+    )
+
+    if drawsShadow {
+        ctx.setShadow(
+            offset: CGSize(width: 1, height: -1),
+            blur: 3,
+            color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.8)
+        )
+    }
+
+    CTFrameDraw(frame, ctx)
+    return ctx.makeImage()
+}
+
 // MARK: - Export errors
 
 enum ExportError: LocalizedError {
@@ -156,6 +280,7 @@ func exportVideo(
     }
 
     let exportDuration = CMTime(seconds: (clampedEnd - trimStart) / speed, preferredTimescale: 600)
+    let exportDurationSeconds = CMTimeGetSeconds(exportDuration)
     let exportRange    = CMTimeRange(start: .zero, duration: exportDuration)
 
     // ── 2. Geometry ──────────────────────────────────────────────────────────
@@ -194,21 +319,25 @@ func exportVideo(
     // Adjust annotation times too
     let adjustedAnnotations: [Annotation] = annotations
         .filter { $0.startTime < clampedEnd && $0.startTime + $0.duration > trimStart }
-        .map { ann in
-            Annotation(id: ann.id, kind: ann.kind, text: ann.text,
-                       startTime: max(0, (ann.startTime - trimStart) / speed),
-                       duration: ann.duration / speed,
-                       position: ann.position,
-                       endPosition: ann.endPosition,
-                       strokeColor: ann.strokeColor,
-                       strokeWidth: ann.strokeWidth,
-                       textColor: ann.textColor,
-                       fontSize: ann.fontSize,
-                       fontWeight: ann.fontWeight,
-                       showBackground: ann.showBackground,
-                       backgroundColor: ann.backgroundColor,
-                       backgroundOpacity: ann.backgroundOpacity,
-                       backgroundCornerRadius: ann.backgroundCornerRadius)
+        .compactMap { ann in
+            let clippedStart = max(ann.startTime, trimStart)
+            let clippedEnd = min(ann.startTime + ann.duration, clampedEnd)
+            guard clippedEnd > clippedStart else { return nil }
+
+            return Annotation(id: ann.id, kind: ann.kind, text: ann.text,
+                              startTime: max(0, (clippedStart - trimStart) / speed),
+                              duration: (clippedEnd - clippedStart) / speed,
+                              position: ann.position,
+                              endPosition: ann.endPosition,
+                              strokeColor: ann.strokeColor,
+                              strokeWidth: ann.strokeWidth,
+                              textColor: ann.textColor,
+                              fontSize: ann.fontSize,
+                              fontWeight: ann.fontWeight,
+                              showBackground: ann.showBackground,
+                              backgroundColor: ann.backgroundColor,
+                              backgroundOpacity: ann.backgroundOpacity,
+                              backgroundCornerRadius: ann.backgroundCornerRadius)
         }
 
     // ── 4. Layer instruction — eased zoom sampled at 30 fps ──────────────────
@@ -217,7 +346,7 @@ func exportVideo(
     applyEasedZoomRamps(
         to: layerInstruction,
         segments: adjustedSegments,
-        exportDuration: CMTimeGetSeconds(exportDuration),
+        exportDuration: exportDurationSeconds,
         videoSize: renderSize,
         paddingX: hPad, paddingY: vPad,
         preferredTransform: preferredTransform
@@ -237,6 +366,8 @@ func exportVideo(
     let parentLayer = CALayer()
     parentLayer.frame = CGRect(origin: .zero, size: canvasSize)
     parentLayer.isGeometryFlipped = true
+    parentLayer.beginTime = AVCoreAnimationBeginTimeAtZero
+    parentLayer.speed = 1
 
     // Background
     let bgLayer = buildBackgroundLayer(background, size: canvasSize)
@@ -272,32 +403,18 @@ func exportVideo(
     // Text annotations
     for ann in adjustedAnnotations where ann.kind == .text {
         let actualFontSize = max(12, ann.fontSize * renderSize.width)
-
-        // Build CATextLayer font with correct weight via CoreText
-        let traits: [CFString: Any] = [kCTFontWeightTrait: ann.fontWeight.ctWeight]
-        let desc   = CTFontDescriptorCreateWithAttributes(traits as CFDictionary)
-        let ctFont = CTFontCreateWithFontDescriptor(desc, actualFontSize, nil)
+        let ctFont = annotationCTFont(size: actualFontSize, weight: ann.fontWeight.ctWeight)
 
         let w: CGFloat = renderSize.width * 0.8
         let h: CGFloat = max(actualFontSize * 2, renderSize.height * 0.08)
         let x = hPad + ann.position.x * renderSize.width  - w / 2
         let y = vPad + ann.position.y * renderSize.height - h / 2
 
-        func makeVisibilityGroup() -> CAAnimationGroup {
-            let fadeIn           = CABasicAnimation(keyPath: "opacity")
-            fadeIn.fromValue = 0; fadeIn.toValue = 1
-            fadeIn.beginTime = 0; fadeIn.duration = 0.3; fadeIn.fillMode = .forwards
-            let fadeOut          = CABasicAnimation(keyPath: "opacity")
-            fadeOut.fromValue = 1; fadeOut.toValue = 0
-            fadeOut.beginTime = ann.duration - 0.3; fadeOut.duration = 0.3; fadeOut.fillMode = .forwards
-            let group            = CAAnimationGroup()
-            group.animations     = [fadeIn, fadeOut]
-            group.beginTime      = ann.startTime
-            group.duration       = ann.duration
-            group.fillMode       = .both
-            group.isRemovedOnCompletion = false
-            return group
-        }
+        let visibility = makeVisibilityOpacityAnimation(
+            startTime: ann.startTime,
+            duration: ann.duration,
+            totalDuration: exportDurationSeconds
+        )
 
         // Background box
         if ann.showBackground {
@@ -310,27 +427,24 @@ func exportVideo(
             bgLayer.backgroundColor = CGColor(red: bg.red, green: bg.green, blue: bg.blue,
                                               alpha: ann.backgroundOpacity)
             bgLayer.cornerRadius = ann.backgroundCornerRadius
-            bgLayer.opacity      = 0
-            bgLayer.add(makeVisibilityGroup(), forKey: "visibility")
+            bgLayer.opacity      = 1
+            bgLayer.add(visibility, forKey: "visibility")
             parentLayer.addSublayer(bgLayer)
         }
 
-        let textLayer             = CATextLayer()
-        textLayer.string          = ann.text
-        textLayer.font            = ctFont
-        textLayer.fontSize        = actualFontSize
-        textLayer.foregroundColor = ann.textColor.cgColor
-        textLayer.alignmentMode   = .center
-        textLayer.isWrapped       = true
-        if !ann.showBackground {
-            textLayer.shadowColor   = CGColor(red: 0, green: 0, blue: 0, alpha: 0.8)
-            textLayer.shadowOffset  = CGSize(width: 1, height: 1)
-            textLayer.shadowRadius  = 3
-            textLayer.shadowOpacity = 1
-        }
+        let textLayer = CALayer()
+        textLayer.contents = annotationTextImage(
+            text: ann.text,
+            font: ctFont,
+            textColor: ann.textColor.cgColor,
+            size: CGSize(width: w, height: h),
+            drawsShadow: !ann.showBackground
+        )
+        textLayer.contentsScale = 2
+        textLayer.contentsGravity = .resize
         textLayer.frame   = CGRect(x: x, y: y, width: w, height: h)
-        textLayer.opacity = 0
-        textLayer.add(makeVisibilityGroup(), forKey: "visibility")
+        textLayer.opacity = 1
+        textLayer.add(visibility, forKey: "visibility")
         parentLayer.addSublayer(textLayer)
     }
 
@@ -363,21 +477,16 @@ func exportVideo(
         shapeLayer.strokeColor    = ann.strokeColor.cgColor
         shapeLayer.lineWidth      = ann.strokeWidth
         shapeLayer.frame          = CGRect(origin: .zero, size: canvasSize)
-        shapeLayer.opacity        = 0
+        shapeLayer.opacity        = 1
 
-        let group            = CAAnimationGroup()
-        let fadeIn           = CABasicAnimation(keyPath: "opacity")
-        fadeIn.fromValue = 0; fadeIn.toValue = 1
-        fadeIn.beginTime = 0; fadeIn.duration = 0.3; fadeIn.fillMode = .forwards
-        let fadeOut          = CABasicAnimation(keyPath: "opacity")
-        fadeOut.fromValue = 1; fadeOut.toValue = 0
-        fadeOut.beginTime = ann.duration - 0.3; fadeOut.duration = 0.3; fadeOut.fillMode = .forwards
-        group.animations     = [fadeIn, fadeOut]
-        group.beginTime      = ann.startTime
-        group.duration       = ann.duration
-        group.fillMode       = .both
-        group.isRemovedOnCompletion = false
-        shapeLayer.add(group, forKey: "visibility")
+        shapeLayer.add(
+            makeVisibilityOpacityAnimation(
+                startTime: ann.startTime,
+                duration: ann.duration,
+                totalDuration: exportDurationSeconds
+            ),
+            forKey: "visibility"
+        )
 
         parentLayer.addSublayer(shapeLayer)
     }
