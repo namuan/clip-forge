@@ -8,14 +8,14 @@ import AppKit
 
 private enum ControlPanel: String, CaseIterable {
     case zoom       = "Zoom"
-    case text       = "Text"
+    case annotations = "Annotations"
     case canvas     = "Canvas"
     case clip       = "Clip"
 
     var icon: String {
         switch self {
         case .zoom:   return "magnifyingglass"
-        case .text:   return "text.bubble"
+        case .annotations: return "text.bubble"
         case .canvas: return "paintpalette"
         case .clip:   return "scissors"
         }
@@ -99,7 +99,7 @@ struct ContentView: View {
             } message: {
                 Text(vm.alertMessage ?? "")
             }
-            .onChange(of: vm.selectedAnnotationID) { _, id  in if id  != nil { activePanel = .text } }
+            .onChange(of: vm.selectedAnnotationID) { _, id  in if id  != nil { activePanel = .annotations } }
             .onChange(of: vm.selectedSegmentID)    { _, id  in if id  != nil { activePanel = .zoom } }
             .onChange(of: vm.backgroundSettings)   { _,  _  in vm.hasUnsavedChanges = true }
             .onChange(of: vm.trimStart)            { _,  _  in vm.hasUnsavedChanges = true }
@@ -243,7 +243,7 @@ struct ContentView: View {
                     Group {
                         switch activePanel {
                         case .zoom:   ZoomControlsView(vm: vm)
-                        case .text:   AnnotationControlsView(vm: vm)
+                        case .annotations: AnnotationControlsView(vm: vm)
                         case .canvas: BackgroundControlsView(vm: vm)
                         case .clip:   ClipControlsView(vm: vm)
                         }
