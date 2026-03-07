@@ -3,12 +3,30 @@ import SwiftUI
 struct VisualTimelineView: View {
     @ObservedObject var vm: ClipForgeViewModel
 
-    private let rulerH: CGFloat   = 22
-    private let zoomH: CGFloat    = 44
-    private let annH: CGFloat     = 34
-    private var totalH: CGFloat   { rulerH + zoomH + annH + 2 }
+    private let rulerH: CGFloat      = 22
+    private let zoomH: CGFloat       = 44
+    private let annLaneSlot: CGFloat = 30   // vertical space per lane (block + gap)
 
     private let annColors: [Color] = [.blue, .purple, .green, .orange, .pink, .teal]
+
+    // ── Lane assignment ─────────────────────────────────────────────────────────
+    /// Returns (annotation, laneIndex) sorted by start time, with lanes packed greedily.
+    private var lanedAnnotations: [(Annotation, Int)] {
+        let sorted = vm.annotations.sorted { $0.startTime < $1.startTime }
+        var result: [(Annotation, Int)] = []
+        var laneEndTimes: [Double] = []
+        for ann in sorted {
+            let idx = laneEndTimes.firstIndex(where: { $0 <= ann.startTime }) ?? laneEndTimes.count
+            if idx == laneEndTimes.count { laneEndTimes.append(ann.startTime + ann.duration) }
+            else { laneEndTimes[idx] = ann.startTime + ann.duration }
+            result.append((ann, idx))
+        }
+        return result
+    }
+
+    private var laneCount: Int { max(1, (lanedAnnotations.map { $0.1 }.max() ?? 0) + 1) }
+    private var annH: CGFloat  { CGFloat(laneCount) * annLaneSlot + 6 }
+    private var totalH: CGFloat { rulerH + zoomH + annH + 2 }
 
     // ── Drag state ─────────────────────────────────────────────────────────────
     private enum DragTarget: Equatable {
@@ -65,12 +83,15 @@ struct VisualTimelineView: View {
                             }
                     }
 
+                    let laned = lanedAnnotations
                     ForEach(vm.annotations) { ann in
-                        let x = xFor(ann.startTime, w: w)
-                        let bw = max(4, xFor(ann.startTime + ann.duration, w: w) - x)
+                        let lane = laned.first(where: { $0.0.id == ann.id })?.1 ?? 0
+                        let x    = xFor(ann.startTime, w: w)
+                        let bw   = max(4, xFor(ann.startTime + ann.duration, w: w) - x)
+                        let laneY = CGFloat(lane) * annLaneSlot
                         Color.clear
-                            .frame(width: bw, height: annH)
-                            .offset(x: x, y: rulerH + zoomH + 2)
+                            .frame(width: bw, height: annLaneSlot - 4)
+                            .offset(x: x, y: rulerH + zoomH + 3 + laneY)
                             .contextMenu {
                                 Button(role: .destructive) {
                                     vm.removeAnnotation(id: ann.id)
@@ -172,7 +193,8 @@ struct VisualTimelineView: View {
                                     vm.addZoomSegment(at: tapT)
                                 }
                             } else if isInAnnotationRow(y: v.startLocation.y) {
-                                if let hit = annotationAt(time: tapT) {
+                                if let hit = annotationAt(x: v.startLocation.x,
+                                                          y: v.startLocation.y, w: w) {
                                     vm.selectedAnnotationID = hit.id
                                 } else {
                                     vm.addAnnotationSegment(at: tapT)
@@ -204,8 +226,15 @@ struct VisualTimelineView: View {
         vm.segments.first { time >= $0.startTime && time <= $0.endTime }
     }
 
-    private func annotationAt(time: Double) -> Annotation? {
-        vm.annotations.first { time >= $0.startTime && time <= $0.startTime + $0.duration }
+    private func annotationAt(x: CGFloat, y: CGFloat, w: CGFloat) -> Annotation? {
+        let annRowTop = rulerH + zoomH + 2
+        let localY    = y - annRowTop
+        let tapLane   = Int(localY / annLaneSlot)
+        return lanedAnnotations.first(where: { ann, lane in
+            lane == tapLane &&
+            x >= xFor(ann.startTime, w: w) &&
+            x <= xFor(ann.startTime + ann.duration, w: w)
+        })?.0
     }
 
     private func pickTarget(x: CGFloat, y: CGFloat, w: CGFloat) -> DragTarget {
@@ -231,10 +260,13 @@ struct VisualTimelineView: View {
             }
         }
 
-        // Annotation edges and bodies
+        // Annotation edges and bodies — lane-aware
         if isInAnnotationRow(y: y) {
+            let annRowTop = rulerH + zoomH + 2
+            let tapLane   = Int((y - annRowTop) / annLaneSlot)
             let edgeHit: CGFloat = 10
-            for ann in vm.annotations {
+            for (ann, lane) in lanedAnnotations {
+                guard lane == tapLane else { continue }
                 let annX  = xFor(ann.startTime, w: w)
                 let annX2 = xFor(ann.startTime + ann.duration, w: w)
                 if abs(x - annX)  <= edgeHit { return .annotationLeft(ann.id)  }
@@ -362,17 +394,20 @@ struct VisualTimelineView: View {
     // MARK: - Annotation row
 
     private func drawAnnotationRow(ctx: GraphicsContext, w: CGFloat) {
-        let rowTop = rulerH + zoomH + 2
+        let rowTop  = rulerH + zoomH + 2
+        let blockH  = annLaneSlot - 4
+
         ctx.draw(ctx.resolve(Text("ANN").font(.system(size: 8, weight: .semibold))
             .foregroundColor(Color.white.opacity(0.25))),
             at: CGPoint(x: 5, y: rowTop + 4), anchor: .topLeading)
 
-        for (i, ann) in vm.annotations.enumerated() {
-            let x1   = xFor(ann.startTime, w: w)
-            let x2   = xFor(ann.startTime + ann.duration, w: w)
-            let barW = max(4, x2 - x1)
-            let rect = CGRect(x: x1, y: rowTop + 3, width: barW, height: annH - 6)
-            let col  = annColors[i % annColors.count]
+        for (i, (ann, lane)) in lanedAnnotations.enumerated() {
+            let x1    = xFor(ann.startTime, w: w)
+            let x2    = xFor(ann.startTime + ann.duration, w: w)
+            let barW  = max(4, x2 - x1)
+            let laneY = CGFloat(lane) * annLaneSlot
+            let rect  = CGRect(x: x1, y: rowTop + 3 + laneY, width: barW, height: blockH)
+            let col   = annColors[i % annColors.count]
             let isSelected = ann.id == vm.selectedAnnotationID
 
             ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(col.opacity(0.5)))
