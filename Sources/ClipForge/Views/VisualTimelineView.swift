@@ -1,7 +1,14 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct VisualTimelineView: View {
     @ObservedObject var vm: ClipForgeViewModel
+
+    #if canImport(AppKit)
+    @State private var keyMonitor: Any?
+    #endif
 
     private let rulerH: CGFloat      = 22
     private let zoomH: CGFloat       = 44
@@ -87,6 +94,9 @@ struct VisualTimelineView: View {
                 }
             }
             .padding(.horizontal)
+
+            // ── Selection hint ────────────────────────────────────────────────
+            selectionHint
 
             // ── Timeline canvas ───────────────────────────────────────────────
             GeometryReader { geo in
@@ -242,6 +252,7 @@ struct VisualTimelineView: View {
                                 if isInZoomRow(y: v.startLocation.y) {
                                     if let hit = segmentAt(time: tapT) {
                                         vm.selectedSegmentID = hit.id
+                                        vm.selectedAnnotationID = nil
                                     } else {
                                         vm.addZoomSegment(at: tapT)
                                     }
@@ -249,6 +260,7 @@ struct VisualTimelineView: View {
                                     if let hit = annotationAt(x: v.startLocation.x,
                                                               y: v.startLocation.y, w: w) {
                                         vm.selectedAnnotationID = hit.id
+                                        vm.selectedSegmentID = nil
                                     } else {
                                         vm.addAnnotationSegment(at: tapT)
                                     }
@@ -269,7 +281,83 @@ struct VisualTimelineView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08), lineWidth: 1))
             .padding(.horizontal)
         }
+        #if canImport(AppKit)
+        .onAppear  { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
+        #endif
     }
+
+    // MARK: - Selection hint
+
+    @ViewBuilder
+    private var selectionHint: some View {
+        if let ann = vm.selectedAnnotation {
+            selectionBar(
+                color: .blue,
+                icon: ann.kind.systemImage,
+                label: ann.kind == .text
+                    ? (ann.text.isEmpty ? "Text annotation" : "\"\(ann.text)\"")
+                    : ann.kind.rawValue
+            )
+        } else if let seg = vm.segments.first(where: { $0.id == vm.selectedSegmentID }) {
+            selectionBar(
+                color: .purple,
+                icon: "magnifyingglass",
+                label: String(format: "%.1f× zoom segment", seg.scale)
+            )
+        }
+    }
+
+    private func selectionBar(color: Color, icon: String, label: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.system(size: 11, weight: .semibold))
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text("Delete to remove")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(0.3), lineWidth: 0.5))
+        .padding(.horizontal)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+        .animation(.easeInOut(duration: 0.15), value: vm.selectedAnnotationID)
+        .animation(.easeInOut(duration: 0.15), value: vm.selectedSegmentID)
+    }
+
+    // MARK: - Delete key
+
+    #if canImport(AppKit)
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else { return event }
+            if NSApp.keyWindow?.firstResponder is NSTextView { return event }
+            // Delete (51) or Forward-delete (117)
+            guard event.keyCode == 51 || event.keyCode == 117 else { return event }
+            if let id = vm.selectedAnnotationID {
+                vm.removeAnnotation(id: id)
+                return nil
+            }
+            if let id = vm.selectedSegmentID {
+                vm.removeSegment(id: id)
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let m = keyMonitor { NSEvent.removeMonitor(m) }
+        keyMonitor = nil
+    }
+    #endif
 
     // MARK: - Zoom
 

@@ -76,7 +76,9 @@ struct ContentView: View {
         }, message: {
             Text(vm.alertMessage ?? "")
         })
-        .onChange(of: vm.exportURL) { _, url in if url != nil { showShareSheet = true } }
+        .onChange(of: vm.exportURL)            { _, url in if url != nil { showShareSheet = true } }
+        .onChange(of: vm.selectedAnnotationID) { _, id in if id != nil { activePanel = .text } }
+        .onChange(of: vm.selectedSegmentID)    { _, id in if id != nil { activePanel = .zoom } }
         #if canImport(UIKit)
         .onChange(of: photosPickerItem) { _, item in
             guard let item else { return }
@@ -143,9 +145,6 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
-
-                    // ── Keyframe & annotation lists ────────────────────────
-                    KeyframeListView(vm: vm)
                         .padding(.top, 4)
                 }
 
