@@ -8,11 +8,10 @@ struct StartScreenView: View {
     var body: some View {
         HStack(spacing: 0) {
             leftPanel
-            Divider().background(Color(white: 0.22))
+            Divider().background(Color(white: 0.86))
             rightPanel
         }
-        .padding(.top, 28)      // clear the transparent title-bar / traffic-light zone
-        .background(Color(white: 0.1))
+        .background(Color(white: 0.97))
     }
 
     // MARK: - Left panel (branding + actions)
@@ -25,13 +24,13 @@ struct StartScreenView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Image(systemName: "film.stack")
                     .font(.system(size: 40, weight: .light))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(Color.accentColor.opacity(0.9))
                 Text("ClipForge")
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color(white: 0.14))
                 Text("Video Editor")
                     .font(.system(size: 12))
-                    .foregroundStyle(Color(white: 0.5))
+                    .foregroundStyle(Color(white: 0.45))
             }
 
             Spacer().frame(height: 36)
@@ -50,7 +49,7 @@ struct StartScreenView: View {
         }
         .padding(.horizontal, 28)
         .frame(width: 220)
-        .background(Color(white: 0.1))
+        .background(Color(white: 0.95))
     }
 
     // MARK: - Right panel (recents)
@@ -60,24 +59,24 @@ struct StartScreenView: View {
             // Header
             Text("Recent Projects")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color(white: 0.45))
+                .foregroundStyle(Color(white: 0.48))
                 .textCase(.uppercase)
                 .tracking(0.6)
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
                 .padding(.bottom, 10)
 
-            Divider().background(Color(white: 0.18))
+            Divider().background(Color(white: 0.86))
 
             if vm.recentProjects.isEmpty {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 26, weight: .light))
-                        .foregroundStyle(Color(white: 0.3))
+                        .foregroundStyle(Color(white: 0.55))
                     Text("No recent projects")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color(white: 0.35))
+                        .foregroundStyle(Color(white: 0.5))
                 }
                 .frame(maxWidth: .infinity)
                 Spacer()
@@ -96,7 +95,7 @@ struct StartScreenView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(white: 0.13))
+        .background(Color(white: 0.99))
     }
 
     private func openRecent(_ recent: RecentProject) {
@@ -119,17 +118,17 @@ private struct StartActionButton: View {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(isHovered ? .white : Color(white: 0.7))
+                    .foregroundStyle(isHovered ? Color(white: 0.14) : Color(white: 0.4))
                     .frame(width: 18)
                 Text(label)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isHovered ? .white : Color(white: 0.8))
+                    .foregroundStyle(isHovered ? Color(white: 0.14) : Color(white: 0.2))
                 Spacer()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
-                isHovered ? Color(white: 0.22) : Color.clear,
+                isHovered ? Color(white: 0.9) : Color.clear,
                 in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
@@ -157,11 +156,11 @@ private struct RecentProjectRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(recent.name)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color(white: 0.88))
+                        .foregroundStyle(Color(white: 0.18))
                         .lineLimit(1)
                     Text(shortPath(recent.projectFileURL))
                         .font(.system(size: 10))
-                        .foregroundStyle(Color(white: 0.38))
+                        .foregroundStyle(Color(white: 0.5))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -170,12 +169,12 @@ private struct RecentProjectRow: View {
 
                 Text(relativeDate(recent.lastOpened))
                     .font(.system(size: 11))
-                    .foregroundStyle(Color(white: 0.32))
+                    .foregroundStyle(Color(white: 0.52))
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(
-                isHovered ? Color(white: 0.19) : Color.clear)
+                isHovered ? Color(white: 0.93) : Color.clear)
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }

@@ -1,6 +1,9 @@
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - Control panel tabs
 
@@ -38,7 +41,7 @@ struct ContentView: View {
 
     var body: some View {
         configured(navigationStack)
-            .preferredColorScheme(.dark)
+            .preferredColorScheme(.light)
     }
 
     private var navigationStack: some View {
@@ -126,20 +129,49 @@ struct ContentView: View {
         DispatchQueue.main.async {
             guard let window = NSApplication.shared.keyWindow else { return }
             if startScreen {
+                window.title = ""
                 window.titleVisibility          = .hidden
                 window.titlebarAppearsTransparent = true
                 window.styleMask.insert(.fullSizeContentView)
                 window.isMovableByWindowBackground = true
-                window.center()
+                window.titlebarSeparatorStyle = .none
+                window.standardWindowButton(.closeButton)?.isHidden = true
+                window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+                window.standardWindowButton(.zoomButton)?.isHidden = true
+                centerOnActiveScreen(window)
             } else {
                 window.titleVisibility          = .visible
                 window.titlebarAppearsTransparent = false
                 window.styleMask.remove(.fullSizeContentView)
                 window.isMovableByWindowBackground = false
+                window.titlebarSeparatorStyle = .automatic
+                window.standardWindowButton(.closeButton)?.isHidden = false
+                window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+                window.standardWindowButton(.zoomButton)?.isHidden = false
             }
         }
         #endif
     }
+
+    #if canImport(AppKit)
+    private func centerOnActiveScreen(_ window: NSWindow) {
+        let mouse = NSEvent.mouseLocation
+        let activeScreen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? window.screen
+            ?? NSScreen.main
+
+        guard let screen = activeScreen else {
+            window.center()
+            return
+        }
+
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        frame.origin.x = visible.minX + (visible.width - frame.width) / 2
+        frame.origin.y = visible.minY + (visible.height - frame.height) / 2
+        window.setFrame(frame, display: true)
+    }
+    #endif
 
     private var videoContentTypes: [UTType] {
         [.movie, .video,
@@ -269,49 +301,51 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // Load video
-        ToolbarItem(placement: .primaryAction) {
-            #if canImport(UIKit)
-            Menu {
-                PhotosPicker(selection: $photosPickerItem,
-                             matching: .videos, photoLibrary: .shared()) {
-                    Label("From Photos", systemImage: "photo")
+        if vm.player != nil {
+            // Load video
+            ToolbarItem(placement: .primaryAction) {
+                #if canImport(UIKit)
+                Menu {
+                    PhotosPicker(selection: $photosPickerItem,
+                                 matching: .videos, photoLibrary: .shared()) {
+                        Label("From Photos", systemImage: "photo")
+                    }
+                    Button { importingProject = false; showFilePicker = true } label: {
+                        Label("From Files", systemImage: "folder")
+                    }
+                } label: {
+                    Label("Load Video", systemImage: "plus.circle")
                 }
+                #else
                 Button { importingProject = false; showFilePicker = true } label: {
-                    Label("From Files", systemImage: "folder")
+                    Label("Load Video", systemImage: "plus.circle")
                 }
-            } label: {
-                Label("Load Video", systemImage: "plus.circle")
+                #endif
             }
-            #else
-            Button { importingProject = false; showFilePicker = true } label: {
-                Label("Load Video", systemImage: "plus.circle")
-            }
-            #endif
-        }
 
-        // Open project
-        ToolbarItem(placement: .primaryAction) {
-            Button { importingProject = true; showFilePicker = true } label: {
-                Label("Open Project", systemImage: "folder")
+            // Open project
+            ToolbarItem(placement: .primaryAction) {
+                Button { importingProject = true; showFilePicker = true } label: {
+                    Label("Open Project", systemImage: "folder")
+                }
             }
-        }
 
-        // Save
-        ToolbarItem(placement: .primaryAction) {
-            Button { handleSave() } label: {
-                Label("Save", systemImage: "square.and.arrow.down")
+            // Save
+            ToolbarItem(placement: .primaryAction) {
+                Button { handleSave() } label: {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                }
+                .disabled(vm.player == nil)
+                .keyboardShortcut("s", modifiers: .command)
             }
-            .disabled(vm.player == nil)
-            .keyboardShortcut("s", modifiers: .command)
-        }
 
-        // Export
-        ToolbarItem(placement: .primaryAction) {
-            Button { vm.exportVideo() } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
+            // Export
+            ToolbarItem(placement: .primaryAction) {
+                Button { vm.exportVideo() } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .disabled(vm.player == nil || vm.isExporting)
             }
-            .disabled(vm.player == nil || vm.isExporting)
         }
     }
 
