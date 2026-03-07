@@ -243,6 +243,42 @@ private func annotationTextSize(
     return CGSize(width: ceil(max(1, measured.width)), height: ceil(max(1, measured.height)))
 }
 
+private func annotationArrowPath(
+    start: CGPoint,
+    end: CGPoint,
+    strokeWidth: CGFloat
+) -> CGPath {
+    let path = CGMutablePath()
+    path.move(to: start)
+    path.addLine(to: end)
+
+    let dx = end.x - start.x
+    let dy = end.y - start.y
+    let length = hypot(dx, dy)
+    guard length > 0.0001 else { return path }
+
+    let ux = dx / length
+    let uy = dy / length
+
+    let headLength = min(max(strokeWidth * 4, 12), length * 0.6)
+    let wingLength = headLength * tan(.pi / 7)
+
+    let base = CGPoint(x: end.x - ux * headLength,
+                       y: end.y - uy * headLength)
+    let perp = CGPoint(x: -uy, y: ux)
+
+    let left = CGPoint(x: base.x + perp.x * wingLength,
+                       y: base.y + perp.y * wingLength)
+    let right = CGPoint(x: base.x - perp.x * wingLength,
+                        y: base.y - perp.y * wingLength)
+
+    path.move(to: end)
+    path.addLine(to: left)
+    path.move(to: end)
+    path.addLine(to: right)
+    return path
+}
+
 // MARK: - Export errors
 
 enum ExportError: LocalizedError {
@@ -496,6 +532,12 @@ func exportVideo(
         case .line:
             let p = CGMutablePath(); p.move(to: CGPoint(x: sx, y: sy))
             p.addLine(to: CGPoint(x: ex, y: ey)); path = p
+        case .arrow:
+            path = annotationArrowPath(
+                start: CGPoint(x: sx, y: sy),
+                end: CGPoint(x: ex, y: ey),
+                strokeWidth: ann.strokeWidth
+            )
         case .rectangle:
             path = CGPath(rect: CGRect(x: min(sx, ex), y: min(sy, ey),
                                        width: abs(ex - sx), height: abs(ey - sy)),

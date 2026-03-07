@@ -7,6 +7,7 @@ import SwiftUI
 enum AnnotationKind: String, Codable, CaseIterable {
     case text      = "Text"
     case line      = "Line"
+    case arrow     = "Arrow"
     case rectangle = "Rectangle"
     case circle    = "Circle"
 
@@ -14,6 +15,7 @@ enum AnnotationKind: String, Codable, CaseIterable {
         switch self {
         case .text:      return "text.bubble"
         case .line:      return "line.diagonal"
+        case .arrow:     return "arrow.up.right"
         case .rectangle: return "rectangle"
         case .circle:    return "circle"
         }

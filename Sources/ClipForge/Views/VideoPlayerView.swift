@@ -52,7 +52,8 @@ struct VideoPlayerView: View {
                     start: CGPoint(x: vm.pendingAnnotationPosition.x    * videoW,
                                    y: vm.pendingAnnotationPosition.y    * videoH),
                     end:   CGPoint(x: vm.pendingAnnotationEndPosition.x * videoW,
-                                   y: vm.pendingAnnotationEndPosition.y * videoH)
+                                   y: vm.pendingAnnotationEndPosition.y * videoH),
+                    strokeWidth: vm.pendingAnnotationStrokeWidth
                 )
                 .stroke(
                     vm.pendingAnnotationStrokeColor.color.opacity(0.75),
@@ -150,15 +151,18 @@ struct VideoPlayerView: View {
         shapePath(
             kind:  ann.kind,
             start: CGPoint(x: ann.position.x    * videoW, y: ann.position.y    * videoH),
-            end:   CGPoint(x: ann.endPosition.x * videoW, y: ann.endPosition.y * videoH)
+            end:   CGPoint(x: ann.endPosition.x * videoW, y: ann.endPosition.y * videoH),
+            strokeWidth: ann.strokeWidth
         )
     }
 
-    private func shapePath(kind: AnnotationKind, start: CGPoint, end: CGPoint) -> Path {
+    private func shapePath(kind: AnnotationKind, start: CGPoint, end: CGPoint, strokeWidth: CGFloat) -> Path {
         switch kind {
         case .text: return Path()
         case .line:
             return Path { p in p.move(to: start); p.addLine(to: end) }
+        case .arrow:
+            return arrowPath(start: start, end: end, strokeWidth: strokeWidth)
         case .rectangle:
             return Path(CGRect(x: min(start.x, end.x), y: min(start.y, end.y),
                                width: abs(end.x - start.x), height: abs(end.y - start.y)))
@@ -166,6 +170,39 @@ struct VideoPlayerView: View {
             let r = hypot(end.x - start.x, end.y - start.y)
             return Path(ellipseIn: CGRect(x: start.x - r, y: start.y - r,
                                           width: r * 2, height: r * 2))
+        }
+    }
+
+    private func arrowPath(start: CGPoint, end: CGPoint, strokeWidth: CGFloat) -> Path {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let length = hypot(dx, dy)
+
+        return Path { path in
+            path.move(to: start)
+            path.addLine(to: end)
+
+            guard length > 0.0001 else { return }
+
+            let ux = dx / length
+            let uy = dy / length
+
+            let headLength = min(max(strokeWidth * 4, 12), length * 0.6)
+            let wingLength = headLength * tan(.pi / 7)
+
+            let base = CGPoint(x: end.x - ux * headLength,
+                               y: end.y - uy * headLength)
+            let perp = CGPoint(x: -uy, y: ux)
+
+            let left = CGPoint(x: base.x + perp.x * wingLength,
+                               y: base.y + perp.y * wingLength)
+            let right = CGPoint(x: base.x - perp.x * wingLength,
+                                y: base.y - perp.y * wingLength)
+
+            path.move(to: end)
+            path.addLine(to: left)
+            path.move(to: end)
+            path.addLine(to: right)
         }
     }
 
