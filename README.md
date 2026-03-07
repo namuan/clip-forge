@@ -21,6 +21,19 @@ Video editor for iOS and macOS with timeline-based zoom, annotations, canvas sty
 - macOS 14+
 - Swift tools: 5.9 (`Package.swift`)
 
+## Building & Installing
+
+To build and install ClipForge on macOS:
+
+```bash
+./install.command [--open]
+```
+
+**Flags:**
+- `--open`: Automatically launch the installed app after build (optional)
+
+This script compiles the Xcode project and installs the resulting `.app` bundle to your `~/Applications` folder.
+
 ## Tech Stack
 
 - SwiftUI for UI
