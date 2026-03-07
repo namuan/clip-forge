@@ -38,20 +38,38 @@ struct ContentView: View {
 
     var body: some View {
         configured(navigationStack)
+            .preferredColorScheme(.dark)
     }
 
     private var navigationStack: some View {
         NavigationStack {
             Group {
-                #if canImport(AppKit)
-                HSplitView {
-                    leftColumn.frame(minWidth: 400, maxWidth: .infinity)
-                    rightColumn.frame(minWidth: 200, maxWidth: 300)
+                if vm.player == nil {
+                    StartScreenView(vm: vm,
+                                    onOpenVideo:   { importingProject = false; showFilePicker = true },
+                                    onOpenProject: { importingProject = true;  showFilePicker = true })
+                    .frame(width: 660, height: 440)
+                    .onAppear { configureWindow(startScreen: true) }
+                } else {
+                    Group {
+                        #if canImport(AppKit)
+                        HSplitView {
+                            leftColumn.frame(minWidth: 400, maxWidth: .infinity)
+                            rightColumn.frame(minWidth: 200, maxWidth: 300)
+                        }
+                        #else
+                        HStack(spacing: 0) { leftColumn; Divider(); rightColumn }
+                        #endif
+                    }
+                    .onAppear { configureWindow(startScreen: false) }
                 }
-                #else
-                HStack(spacing: 0) { leftColumn; Divider(); rightColumn }
-                #endif
             }
+            .frame(
+                minWidth:  vm.player == nil ? 660  : 900,
+                maxWidth:  vm.player == nil ? 660  : .infinity,
+                minHeight: vm.player == nil ? 440  : 600,
+                maxHeight: vm.player == nil ? 440  : .infinity
+            )
             .navigationTitle(navigationTitle)
             #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
@@ -90,6 +108,37 @@ struct ContentView: View {
             .onChange(of: vm.backgroundSettings)   { _,  _  in vm.hasUnsavedChanges = true }
             .onChange(of: vm.trimStart)            { _,  _  in vm.hasUnsavedChanges = true }
             .onChange(of: vm.trimEnd)              { _,  _  in vm.hasUnsavedChanges = true }
+            .onChange(of: vm.player) { old, new in
+                guard old == nil, new != nil else { return }
+                // Delay lets the window resize to editor dimensions before maximising
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    #if canImport(AppKit)
+                    if let w = NSApplication.shared.keyWindow, !w.isZoomed { w.zoom(nil) }
+                    #endif
+                }
+            }
+    }
+
+    // MARK: - Window chrome
+
+    private func configureWindow(startScreen: Bool) {
+        #if canImport(AppKit)
+        DispatchQueue.main.async {
+            guard let window = NSApplication.shared.keyWindow else { return }
+            if startScreen {
+                window.titleVisibility          = .hidden
+                window.titlebarAppearsTransparent = true
+                window.styleMask.insert(.fullSizeContentView)
+                window.isMovableByWindowBackground = true
+                window.center()
+            } else {
+                window.titleVisibility          = .visible
+                window.titlebarAppearsTransparent = false
+                window.styleMask.remove(.fullSizeContentView)
+                window.isMovableByWindowBackground = false
+            }
+        }
+        #endif
     }
 
     private var videoContentTypes: [UTType] {
@@ -119,21 +168,12 @@ struct ContentView: View {
             VideoPlayerView(vm: vm)
                 .frame(maxWidth: .infinity)
 
-            if vm.player == nil {
-                ContentUnavailableView(
-                    "No Video",
-                    systemImage: "film",
-                    description: Text("Load a video to get started.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                TimelineView(vm: vm)
-                    .padding(.top, 8)
+            TimelineView(vm: vm)
+                .padding(.top, 8)
 
-                VisualTimelineView(vm: vm)
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
-            }
+            VisualTimelineView(vm: vm)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
@@ -253,14 +293,14 @@ struct ContentView: View {
         // Open project
         ToolbarItem(placement: .primaryAction) {
             Button { importingProject = true; showFilePicker = true } label: {
-                Label("Open Project", systemImage: "folder.badge.plus")
+                Label("Open Project", systemImage: "folder")
             }
         }
 
         // Save
         ToolbarItem(placement: .primaryAction) {
             Button { handleSave() } label: {
-                Label("Save", systemImage: vm.hasUnsavedChanges ? "square.and.pencil" : "square.and.arrow.down")
+                Label("Save", systemImage: "square.and.arrow.down")
             }
             .disabled(vm.player == nil)
             .keyboardShortcut("s", modifiers: .command)

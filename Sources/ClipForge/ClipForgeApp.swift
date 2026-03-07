@@ -7,7 +7,9 @@ struct ClipForgeApp: App {
             ContentView()
         }
         #if os(macOS)
-        .defaultSize(width: 800, height: 900)
+        .defaultSize(width: 660, height: 440)
+        .defaultPosition(.center)
+        .windowResizability(.contentSize)
         #endif
     }
 }

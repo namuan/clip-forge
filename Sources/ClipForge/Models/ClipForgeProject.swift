@@ -13,6 +13,15 @@ struct ClipForgeProject: Codable {
     static let fileName = "project.clipforge"
 }
 
+// MARK: - Recent project entry
+
+struct RecentProject: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var projectFileURL: URL   // path to project.clipforge
+    var lastOpened: Date
+}
+
 enum ProjectError: LocalizedError {
     case noVideo
     case videoFileMissing(String)

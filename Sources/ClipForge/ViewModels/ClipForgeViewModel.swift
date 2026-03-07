@@ -61,8 +61,12 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var currentProjectURL: URL? = nil
     @Published var projectName: String = ""
     @Published var hasUnsavedChanges: Bool = false
+    @Published var recentProjects: [RecentProject] = []
     /// Original filename of the source video (preserved across temp copies)
     private(set) var videoOriginalName: String = ""
+
+    private static let recentsKey = "recentProjects"
+    private static let maxRecents = 10
 
     // MARK: - Export state
     @Published var isExporting: Bool = false
@@ -74,6 +78,43 @@ final class ClipForgeViewModel: ObservableObject {
     private var asset: AVURLAsset?
     private var timeObserverToken: Any?
     private var playerItemCancellable: AnyCancellable?
+
+    // MARK: - Init
+
+    init() { loadRecents() }
+
+    // MARK: - Recent projects
+
+    private func loadRecents() {
+        guard let data = UserDefaults.standard.data(forKey: Self.recentsKey),
+              let decoded = try? JSONDecoder().decode([RecentProject].self, from: data)
+        else { return }
+        // Filter to entries whose file still exists on disk
+        recentProjects = decoded.filter {
+            FileManager.default.fileExists(atPath: $0.projectFileURL.path)
+        }
+    }
+
+    private func persistRecents() {
+        guard let data = try? JSONEncoder().encode(recentProjects) else { return }
+        UserDefaults.standard.set(data, forKey: Self.recentsKey)
+    }
+
+    func addToRecents(name: String, projectFileURL: URL) {
+        recentProjects.removeAll { $0.projectFileURL == projectFileURL }
+        recentProjects.insert(
+            RecentProject(id: UUID(), name: name, projectFileURL: projectFileURL, lastOpened: Date()),
+            at: 0)
+        if recentProjects.count > Self.maxRecents {
+            recentProjects = Array(recentProjects.prefix(Self.maxRecents))
+        }
+        persistRecents()
+    }
+
+    func removeFromRecents(id: UUID) {
+        recentProjects.removeAll { $0.id == id }
+        persistRecents()
+    }
 
     // MARK: - App documents directory
 
@@ -359,6 +400,8 @@ final class ClipForgeViewModel: ObservableObject {
         currentProjectURL = projectDir
         projectName       = safeName
         hasUnsavedChanges = false
+        addToRecents(name: safeName,
+                     projectFileURL: projectDir.appendingPathComponent(ClipForgeProject.fileName))
     }
 
     /// Re-saves to the existing project folder (must already have a project URL).
@@ -392,6 +435,7 @@ final class ClipForgeViewModel: ObservableObject {
         currentProjectURL    = dir
         projectName          = project.name
         hasUnsavedChanges    = false
+        addToRecents(name: project.name, projectFileURL: projectFile)
     }
 
     // MARK: - Export
