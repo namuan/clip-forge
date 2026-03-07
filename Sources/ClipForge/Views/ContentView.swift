@@ -319,25 +319,34 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if vm.player != nil {
-            // Save
             ToolbarItem(placement: .primaryAction) {
-                Button { handleSave() } label: {
-                    Image(systemName: "square.and.arrow.down")
-                }
-                .buttonStyle(.plain)
-                .help("Save Project")
-                .disabled(vm.player == nil)
-                .keyboardShortcut("s", modifiers: .command)
-            }
+                HStack(spacing: 0) {
+                    Button { handleSave() } label: {
+                        Image(systemName: "arrow.down.to.line")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 30, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Save Project")
+                    .disabled(vm.player == nil)
+                    .keyboardShortcut("s", modifiers: .command)
 
-            // Export
-            ToolbarItem(placement: .primaryAction) {
-                Button { vm.exportVideo() } label: {
-                    Image(systemName: "square.and.arrow.up")
+                    Divider()
+                        .frame(height: 14)
+
+                    Button { vm.exportVideo() } label: {
+                        Image(systemName: "arrow.up.to.line")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 30, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Export Video")
+                    .disabled(vm.player == nil || vm.isExporting)
                 }
-                .buttonStyle(.plain)
-                .help("Export Video")
-                .disabled(vm.player == nil || vm.isExporting)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(.thinMaterial))
+                .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 1))
             }
         }
     }

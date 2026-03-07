@@ -276,9 +276,9 @@ struct VisualTimelineView: View {
                 )
             }
             .frame(height: totalH)
-            .background(Color(white: 0.97))
+            .background(Color(red: 0.11, green: 0.12, blue: 0.15))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.82), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.14), lineWidth: 1))
             .padding(.horizontal)
         }
         #if canImport(AppKit)
@@ -462,7 +462,7 @@ struct VisualTimelineView: View {
 
     private func drawRuler(ctx: GraphicsContext, w: CGFloat, h: CGFloat) {
         ctx.fill(Path(CGRect(x: 0, y: 0, width: w, height: rulerH)),
-                 with: .color(Color(white: 0.93)))
+                 with: .color(Color(red: 0.17, green: 0.18, blue: 0.21)))
 
         let majorStep = niceStep(w: w)
         let minorStep = majorStep / 5
@@ -482,33 +482,33 @@ struct VisualTimelineView: View {
                 ctx.stroke(Path { p in
                     p.move(to: CGPoint(x: px, y: rulerH - 8))
                     p.addLine(to: CGPoint(x: px, y: rulerH))
-                }, with: .color(.gray), lineWidth: 1)
+                }, with: .color(Color.white.opacity(0.6)), lineWidth: 1)
 
                 // Vertical grid line through all rows
                 ctx.stroke(Path { p in
                     p.move(to: CGPoint(x: px, y: rulerH))
                     p.addLine(to: CGPoint(x: px, y: h))
-                }, with: .color(Color.black.opacity(0.08)), lineWidth: 0.5)
+                }, with: .color(Color.white.opacity(0.08)), lineWidth: 0.5)
 
                 // Label
                 let clampedT = min(max(t, 0), vm.duration)
                 ctx.draw(ctx.resolve(
                     Text(formatTime(clampedT))
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(.secondary)),
+                        .foregroundColor(Color.white.opacity(0.75))),
                     at: CGPoint(x: px + 3, y: rulerH - 10), anchor: .bottomLeading)
             } else {
                 // Minor tick
                 ctx.stroke(Path { p in
                     p.move(to: CGPoint(x: px, y: rulerH - 4))
                     p.addLine(to: CGPoint(x: px, y: rulerH))
-                }, with: .color(Color.gray.opacity(0.5)), lineWidth: 0.5)
+                }, with: .color(Color.white.opacity(0.35)), lineWidth: 0.5)
             }
         }
 
         ctx.stroke(Path { p in
             p.move(to: CGPoint(x: 0, y: rulerH)); p.addLine(to: CGPoint(x: w, y: rulerH))
-        }, with: .color(Color(white: 0.78)), lineWidth: 0.5)
+        }, with: .color(Color.white.opacity(0.16)), lineWidth: 0.5)
     }
 
     // MARK: - Zoom row
@@ -516,7 +516,7 @@ struct VisualTimelineView: View {
     private func drawZoomRow(ctx: GraphicsContext, w: CGFloat) {
         let rowTop = rulerH + 1
         ctx.draw(ctx.resolve(Text("ZOOM").font(.system(size: 8, weight: .semibold))
-            .foregroundColor(.secondary)),
+            .foregroundColor(Color.white.opacity(0.72))),
             at: CGPoint(x: 5, y: rowTop + 4), anchor: .topLeading)
 
         for seg in vm.segments {
@@ -565,7 +565,7 @@ struct VisualTimelineView: View {
 
         ctx.stroke(Path { p in
             p.move(to: CGPoint(x: 0, y: rowTop + zoomH)); p.addLine(to: CGPoint(x: w, y: rowTop + zoomH))
-        }, with: .color(Color(white: 0.78)), lineWidth: 0.5)
+        }, with: .color(Color.white.opacity(0.16)), lineWidth: 0.5)
     }
 
     // MARK: - Annotation row
@@ -574,7 +574,7 @@ struct VisualTimelineView: View {
         let rowTop = rulerH + zoomH + 2
         let blockH = annLaneSlot - 4
         ctx.draw(ctx.resolve(Text("ANN").font(.system(size: 8, weight: .semibold))
-            .foregroundColor(.secondary)),
+            .foregroundColor(Color.white.opacity(0.72))),
             at: CGPoint(x: 5, y: rowTop + 4), anchor: .topLeading)
 
         for (i, (ann, lane)) in lanedAnnotations.enumerated() {
