@@ -1,0 +1,20 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.moved-to-trash/
+
+# OS
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# Editor
+.vscode/
+*.swp
+*~
