@@ -57,6 +57,13 @@ final class ClipForgeViewModel: ObservableObject {
         get { segments.first { $0.id == selectedSegmentID } }
     }
 
+    // MARK: - Project state
+    @Published var currentProjectURL: URL? = nil
+    @Published var projectName: String = ""
+    @Published var hasUnsavedChanges: Bool = false
+    /// Original filename of the source video (preserved across temp copies)
+    private(set) var videoOriginalName: String = ""
+
     // MARK: - Export state
     @Published var isExporting: Bool = false
     @Published var exportURL: URL?
@@ -68,15 +75,23 @@ final class ClipForgeViewModel: ObservableObject {
     private var timeObserverToken: Any?
     private var playerItemCancellable: AnyCancellable?
 
+    // MARK: - App documents directory
+
+    static var appDocumentsDir: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir  = docs.appendingPathComponent("ClipForge")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     // MARK: - Video loading
 
-    func loadVideo(url: URL) {
+    /// Sets up AVPlayer without resetting any project state.
+    private func setupPlayer(url: URL) {
         cleanupPlayer()
-        trimStart = 0; trimEnd = nil; playbackSpeed = 1.0
-
         let asset = AVURLAsset(url: url)
         self.asset = asset
-        let item = AVPlayerItem(asset: asset)
+        let item   = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: item)
         self.player = player
 
@@ -90,7 +105,9 @@ final class ClipForgeViewModel: ObservableObject {
             }
 
         let interval = CMTime(value: 1, timescale: 30)
-        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+        timeObserverToken = player.addPeriodicTimeObserver(
+            forInterval: interval, queue: .main
+        ) { [weak self] time in
             guard let self else { return }
             let t = CMTimeGetSeconds(time)
             if !t.isNaN {
@@ -107,6 +124,21 @@ final class ClipForgeViewModel: ObservableObject {
             self, selector: #selector(playerDidFinish),
             name: .AVPlayerItemDidPlayToEndTime, object: item)
         player.play(); isPlaying = true
+    }
+
+    /// Load a fresh video, resetting all project state.
+    func loadVideo(url: URL, originalFileName: String? = nil) {
+        setupPlayer(url: url)
+        videoOriginalName    = originalFileName ?? url.lastPathComponent
+        segments             = []
+        annotations          = []
+        selectedSegmentID    = nil
+        selectedAnnotationID = nil
+        trimStart = 0; trimEnd = nil; playbackSpeed = 1.0
+        backgroundSettings   = BackgroundSettings()
+        currentProjectURL    = nil
+        projectName          = ""
+        hasUnsavedChanges    = false
     }
 
     @objc private func playerDidFinish() { isPlaying = false }
@@ -135,6 +167,7 @@ final class ClipForgeViewModel: ObservableObject {
     func setSpeed(_ speed: Double) {
         playbackSpeed = speed
         if isPlaying { player?.rate = Float(speed) }
+        hasUnsavedChanges = true
     }
 
     // MARK: - Zoom segments
@@ -145,6 +178,7 @@ final class ClipForgeViewModel: ObservableObject {
         segments.append(seg)
         segments.sort { $0.startTime < $1.startTime }
         selectedSegmentID = seg.id
+        hasUnsavedChanges = true
     }
 
     func updateSegment(id: UUID, scale: CGFloat? = nil, center: CGPoint? = nil,
@@ -156,27 +190,30 @@ final class ClipForgeViewModel: ObservableObject {
         if let v = center    { s.center = v }
         if let v = startTime { s.startTime = max(0, v) }
         if let v = duration  { s.duration = max(0.3, v) }
-        // Clamp easeIn/easeOut so they don't exceed half the duration
         let d = duration ?? s.duration
         if let v = easeIn  { s.easeIn  = max(0, min(v, d / 2)) }
         if let v = easeOut { s.easeOut = max(0, min(v, d / 2)) }
         segments[idx] = s
+        hasUnsavedChanges = true
     }
 
     func toggleSegmentEnabled(id: UUID) {
         guard let idx = segments.firstIndex(where: { $0.id == id }) else { return }
         segments[idx].isEnabled.toggle()
+        hasUnsavedChanges = true
     }
 
     func removeSegment(id: UUID) {
         segments.removeAll { $0.id == id }
         if selectedSegmentID == id { selectedSegmentID = nil }
+        hasUnsavedChanges = true
     }
 
     func removeSegment(at offsets: IndexSet) {
         let ids = offsets.map { segments[$0].id }
         segments.remove(atOffsets: offsets)
         if let sid = selectedSegmentID, ids.contains(sid) { selectedSegmentID = nil }
+        hasUnsavedChanges = true
     }
 
     // MARK: - Annotations
@@ -202,7 +239,8 @@ final class ClipForgeViewModel: ObservableObject {
             backgroundCornerRadius: pendingBackgroundCornerRadius)
         annotations.append(ann)
         pendingAnnotationText = ""
-        selectedAnnotationID = ann.id
+        selectedAnnotationID  = ann.id
+        hasUnsavedChanges     = true
     }
 
     func addAnnotationSegment(at time: Double? = nil) {
@@ -218,6 +256,7 @@ final class ClipForgeViewModel: ObservableObject {
             strokeWidth: pendingAnnotationStrokeWidth)
         annotations.append(ann)
         selectedAnnotationID = ann.id
+        hasUnsavedChanges    = true
     }
 
     func updateAnnotation(id: UUID, text: String? = nil, startTime: Double? = nil,
@@ -229,31 +268,34 @@ final class ClipForgeViewModel: ObservableObject {
                           backgroundColor: CodableColor? = nil, backgroundOpacity: Double? = nil,
                           backgroundCornerRadius: CGFloat? = nil) {
         guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
-        if let v = text                  { annotations[idx].text                  = v }
-        if let v = startTime             { annotations[idx].startTime             = max(0, v) }
-        if let v = duration              { annotations[idx].duration              = max(0.3, v) }
-        if let v = position              { annotations[idx].position              = v }
-        if let v = endPosition           { annotations[idx].endPosition           = v }
-        if let v = strokeColor           { annotations[idx].strokeColor           = v }
-        if let v = strokeWidth           { annotations[idx].strokeWidth           = v }
-        if let v = textColor             { annotations[idx].textColor             = v }
-        if let v = fontSize              { annotations[idx].fontSize              = max(0.005, v) }
-        if let v = fontWeight            { annotations[idx].fontWeight            = v }
-        if let v = showBackground        { annotations[idx].showBackground        = v }
-        if let v = backgroundColor       { annotations[idx].backgroundColor       = v }
-        if let v = backgroundOpacity     { annotations[idx].backgroundOpacity     = v }
+        if let v = text                   { annotations[idx].text                   = v }
+        if let v = startTime              { annotations[idx].startTime              = max(0, v) }
+        if let v = duration               { annotations[idx].duration               = max(0.3, v) }
+        if let v = position               { annotations[idx].position               = v }
+        if let v = endPosition            { annotations[idx].endPosition            = v }
+        if let v = strokeColor            { annotations[idx].strokeColor            = v }
+        if let v = strokeWidth            { annotations[idx].strokeWidth            = v }
+        if let v = textColor              { annotations[idx].textColor              = v }
+        if let v = fontSize               { annotations[idx].fontSize               = max(0.005, v) }
+        if let v = fontWeight             { annotations[idx].fontWeight             = v }
+        if let v = showBackground         { annotations[idx].showBackground         = v }
+        if let v = backgroundColor        { annotations[idx].backgroundColor        = v }
+        if let v = backgroundOpacity      { annotations[idx].backgroundOpacity      = v }
         if let v = backgroundCornerRadius { annotations[idx].backgroundCornerRadius = v }
+        hasUnsavedChanges = true
     }
 
     func removeAnnotation(id: UUID) {
         annotations.removeAll { $0.id == id }
         if selectedAnnotationID == id { selectedAnnotationID = nil }
+        hasUnsavedChanges = true
     }
 
     func deleteAnnotations(at offsets: IndexSet) {
         let ids = offsets.map { annotations[$0].id }
         annotations.remove(atOffsets: offsets)
         if let sid = selectedAnnotationID, ids.contains(sid) { selectedAnnotationID = nil }
+        hasUnsavedChanges = true
     }
 
     // MARK: - Live zoom preview
@@ -275,6 +317,81 @@ final class ClipForgeViewModel: ObservableObject {
 
     func visibleAnnotations(at time: Double) -> [Annotation] {
         annotations.filter { time >= $0.startTime && time <= $0.startTime + $0.duration }
+    }
+
+    // MARK: - Project: Save
+
+    func saveProject(name: String) throws {
+        guard let asset else { throw ProjectError.noVideo }
+        let fm = FileManager.default
+
+        let safeName = name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        guard !safeName.isEmpty else { throw ProjectError.noVideo }
+
+        let projectDir = Self.appDocumentsDir.appendingPathComponent(safeName)
+        try fm.createDirectory(at: projectDir, withIntermediateDirectories: true)
+
+        // Determine video filename to use inside the project folder
+        let ext = asset.url.pathExtension.isEmpty ? "mp4" : asset.url.pathExtension
+        let videoSaveName = videoOriginalName.isEmpty ? "video.\(ext)" : videoOriginalName
+        let videoDestURL  = projectDir.appendingPathComponent(videoSaveName)
+
+        if !fm.fileExists(atPath: videoDestURL.path) {
+            try fm.copyItem(at: asset.url, to: videoDestURL)
+        }
+
+        let project = ClipForgeProject(
+            name: safeName,
+            videoFileName: videoSaveName,
+            segments: segments,
+            annotations: annotations,
+            trimStart: trimStart,
+            trimEnd: trimEnd,
+            playbackSpeed: playbackSpeed,
+            backgroundSettings: backgroundSettings)
+
+        let data = try JSONEncoder().encode(project)
+        try data.write(to: projectDir.appendingPathComponent(ClipForgeProject.fileName))
+
+        currentProjectURL = projectDir
+        projectName       = safeName
+        hasUnsavedChanges = false
+    }
+
+    /// Re-saves to the existing project folder (must already have a project URL).
+    func saveCurrentProject() throws {
+        guard let dir = currentProjectURL else { return }
+        try saveProject(name: dir.lastPathComponent)
+    }
+
+    // MARK: - Project: Load
+
+    func loadProject(from projectFile: URL) throws {
+        let data    = try Data(contentsOf: projectFile)
+        let project = try JSONDecoder().decode(ClipForgeProject.self, from: data)
+        let dir     = projectFile.deletingLastPathComponent()
+        let videoURL = dir.appendingPathComponent(project.videoFileName)
+
+        guard FileManager.default.fileExists(atPath: videoURL.path) else {
+            throw ProjectError.videoFileMissing(project.videoFileName)
+        }
+
+        setupPlayer(url: videoURL)
+        videoOriginalName    = project.videoFileName
+        segments             = project.segments
+        annotations          = project.annotations
+        selectedSegmentID    = nil
+        selectedAnnotationID = nil
+        trimStart            = project.trimStart
+        trimEnd              = project.trimEnd
+        playbackSpeed        = project.playbackSpeed
+        backgroundSettings   = project.backgroundSettings
+        currentProjectURL    = dir
+        projectName          = project.name
+        hasUnsavedChanges    = false
     }
 
     // MARK: - Export

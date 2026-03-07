@@ -42,7 +42,7 @@ enum BackgroundStyle: String, Codable, CaseIterable {
 
 // MARK: - BackgroundSettings
 
-struct BackgroundSettings: Codable {
+struct BackgroundSettings: Codable, Equatable {
     var style: BackgroundStyle      = .gradient
     var gradientStart: CodableColor = .init(red: 0.44, green: 0.28, blue: 0.88)
     var gradientEnd: CodableColor   = .init(red: 0.18, green: 0.52, blue: 0.92)
