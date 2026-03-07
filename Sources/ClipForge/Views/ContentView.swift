@@ -322,9 +322,11 @@ struct ContentView: View {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 0) {
                     Button { handleSave() } label: {
-                        Image(systemName: "arrow.down.to.line")
-                            .font(.system(size: 13, weight: .semibold))
-                            .frame(width: 30, height: 24)
+                        Label("Save", systemImage: "arrow.down.to.line")
+                            .font(.system(size: 14, weight: .semibold))
+                            .labelStyle(.titleAndIcon)
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
                     }
                     .buttonStyle(.plain)
                     .help("Save Project")
@@ -332,19 +334,21 @@ struct ContentView: View {
                     .keyboardShortcut("s", modifiers: .command)
 
                     Divider()
-                        .frame(height: 14)
+                        .frame(height: 20)
 
                     Button { vm.exportVideo() } label: {
-                        Image(systemName: "arrow.up.to.line")
-                            .font(.system(size: 13, weight: .semibold))
-                            .frame(width: 30, height: 24)
+                        Label("Export", systemImage: "arrow.up.to.line")
+                            .font(.system(size: 14, weight: .semibold))
+                            .labelStyle(.titleAndIcon)
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
                     }
                     .buttonStyle(.plain)
                     .help("Export Video")
                     .disabled(vm.player == nil || vm.isExporting)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
                 .background(Capsule().fill(.thinMaterial))
                 .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 1))
             }
