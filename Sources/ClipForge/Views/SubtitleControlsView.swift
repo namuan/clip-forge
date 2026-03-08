@@ -3,9 +3,13 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct SubtitleControlsView: View {
     @ObservedObject var vm: ClipForgeViewModel
+    @State private var customPresetName: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -14,6 +18,8 @@ struct SubtitleControlsView: View {
             languageSection
 
             stylePresetSection
+
+            styleEditorSection
 
             Divider()
 
@@ -75,7 +81,7 @@ struct SubtitleControlsView: View {
 
     private var stylePresetSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Style")
+            Text("Style Presets")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -103,6 +109,28 @@ struct SubtitleControlsView: View {
                     )
                 }
             }
+
+            if !vm.customSubtitlePresets.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(vm.customSubtitlePresets) { preset in
+                            customPresetButton(preset)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField("Preset name", text: $customPresetName)
+                    .textFieldStyle(.roundedBorder)
+
+                Button("Save Preset") {
+                    vm.saveCurrentSubtitleStyleAsPreset(named: customPresetName)
+                    customPresetName = ""
+                }
+                .buttonStyle(.bordered)
+                .disabled(customPresetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
         }
     }
 
@@ -115,7 +143,7 @@ struct SubtitleControlsView: View {
         let isSelected = vm.subtitleStylePreset == preset
 
         return Button {
-            vm.subtitleStylePreset = preset
+            vm.selectSubtitleStylePreset(preset)
         } label: {
             HStack(spacing: 6) {
                 if isSelected {
@@ -144,6 +172,212 @@ struct SubtitleControlsView: View {
             .opacity(isSelected ? 1 : 0.55)
         }
         .buttonStyle(.plain)
+    }
+
+    private func customPresetButton(_ preset: CustomSubtitlePreset) -> some View {
+        let isSelected = vm.selectedCustomSubtitlePresetID == preset.id
+
+        return HStack(spacing: 6) {
+            Button {
+                vm.applyCustomSubtitlePreset(id: preset.id)
+            } label: {
+                HStack(spacing: 6) {
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                    }
+                    Text(preset.name)
+                        .font(.caption.weight(.semibold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundStyle(isSelected ? Color.white : .primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isSelected ? Color.accentColor : Color.primary.opacity(0.07))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(isSelected ? Color.accentColor : Color.primary.opacity(0.16), lineWidth: isSelected ? 2 : 1)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                vm.deleteCustomSubtitlePreset(id: preset.id)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var styleEditorSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Style Properties")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Picker("Font", selection: fontNameBinding) {
+                ForEach(availableFontNames, id: \.self) { name in
+                    Text(name).tag(name)
+                }
+            }
+
+            Toggle("Auto scale to fit video width", isOn: autoScaleToFitBinding)
+                .font(.caption)
+
+            LabeledSlider("Font Size", value: fontSizeBinding, in: 12...120, format: "%.0f")
+            LabeledSlider("Outline Width", value: outlineWidthBinding, in: 0...12, format: "%.1f")
+            LabeledSlider("Background Opacity", value: backgroundOpacityBinding, in: 0...1, format: "%.2f")
+            LabeledSlider("Background Padding", value: backgroundPaddingBinding, in: 0...40, format: "%.0f")
+            LabeledSlider("Shadow Blur", value: shadowBlurBinding, in: 0...20, format: "%.1f")
+            LabeledSlider("Shadow Offset X", value: shadowOffsetXBinding, in: -20...20, format: "%.1f")
+            LabeledSlider("Shadow Offset Y", value: shadowOffsetYBinding, in: -20...20, format: "%.1f")
+            LabeledSlider("Vertical Position", value: verticalPositionBinding, in: 0.05...0.95, format: "%.2f")
+            LabeledSlider("Horizontal Margin", value: horizontalMarginBinding, in: 0...0.3, format: "%.2f")
+
+            HStack(spacing: 12) {
+                ColorPicker("Text Color", selection: textColorBinding)
+                ColorPicker("Outline Color", selection: outlineColorBinding)
+                ColorPicker("Background Color", selection: backgroundColorBinding)
+                ColorPicker("Shadow Color", selection: shadowColorBinding)
+            }
+            .font(.caption)
+        }
+    }
+
+    private var fontNameBinding: Binding<String> {
+        Binding(
+            get: { vm.subtitleStyle.fontName },
+            set: { value in vm.updateSubtitleStyle { $0.fontName = value } }
+        )
+    }
+
+    private var autoScaleToFitBinding: Binding<Bool> {
+        Binding(
+            get: { vm.subtitleStyle.autoScaleToFit },
+            set: { value in vm.updateSubtitleStyle { $0.autoScaleToFit = value } }
+        )
+    }
+
+    private var fontSizeBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.fontSize) },
+            set: { value in vm.updateSubtitleStyle { $0.fontSize = CGFloat(value) } }
+        )
+    }
+
+    private var outlineWidthBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.outlineWidth) },
+            set: { value in vm.updateSubtitleStyle { $0.outlineWidth = CGFloat(value) } }
+        )
+    }
+
+    private var backgroundOpacityBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.backgroundOpacity) },
+            set: { value in vm.updateSubtitleStyle { $0.backgroundOpacity = CGFloat(value).clamped(to: 0...1) } }
+        )
+    }
+
+    private var backgroundPaddingBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.backgroundPadding) },
+            set: { value in vm.updateSubtitleStyle { $0.backgroundPadding = CGFloat(value) } }
+        )
+    }
+
+    private var shadowBlurBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.shadowBlur) },
+            set: { value in vm.updateSubtitleStyle { $0.shadowBlur = CGFloat(value) } }
+        )
+    }
+
+    private var shadowOffsetXBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.shadowOffset.width) },
+            set: { value in
+                vm.updateSubtitleStyle { style in
+                    style.shadowOffset = CGSize(width: CGFloat(value), height: style.shadowOffset.height)
+                }
+            }
+        )
+    }
+
+    private var shadowOffsetYBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.shadowOffset.height) },
+            set: { value in
+                vm.updateSubtitleStyle { style in
+                    style.shadowOffset = CGSize(width: style.shadowOffset.width, height: CGFloat(value))
+                }
+            }
+        )
+    }
+
+    private var verticalPositionBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.verticalPosition) },
+            set: { value in vm.updateSubtitleStyle { $0.verticalPosition = CGFloat(value).clamped(to: 0.05...0.95) } }
+        )
+    }
+
+    private var horizontalMarginBinding: Binding<Double> {
+        Binding(
+            get: { Double(vm.subtitleStyle.horizontalMargin) },
+            set: { value in vm.updateSubtitleStyle { $0.horizontalMargin = CGFloat(value).clamped(to: 0...0.3) } }
+        )
+    }
+
+    private var textColorBinding: Binding<Color> {
+        Binding(
+            get: { vm.subtitleStyle.textColor.color },
+            set: { color in vm.updateSubtitleStyle { $0.textColor = color.toCodable() } }
+        )
+    }
+
+    private var outlineColorBinding: Binding<Color> {
+        Binding(
+            get: { vm.subtitleStyle.outlineColor.color },
+            set: { color in vm.updateSubtitleStyle { $0.outlineColor = color.toCodable() } }
+        )
+    }
+
+    private var backgroundColorBinding: Binding<Color> {
+        Binding(
+            get: { vm.subtitleStyle.backgroundColor.color },
+            set: { color in vm.updateSubtitleStyle { $0.backgroundColor = color.toCodable() } }
+        )
+    }
+
+    private var shadowColorBinding: Binding<Color> {
+        Binding(
+            get: { vm.subtitleStyle.shadowColor.color },
+            set: { color in vm.updateSubtitleStyle { $0.shadowColor = color.toCodable() } }
+        )
+    }
+
+    private var availableFontNames: [String] {
+        #if canImport(AppKit)
+        let names = NSFontManager.shared.availableFonts
+        #elseif canImport(UIKit)
+        let names = UIFont.familyNames
+            .flatMap { UIFont.fontNames(forFamilyName: $0) }
+        #else
+        let names: [String] = []
+        #endif
+
+        let sorted = names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        let current = vm.subtitleStyle.fontName
+        if sorted.contains(current) {
+            return sorted
+        }
+        return [current] + sorted
     }
 
     private var generateSection: some View {

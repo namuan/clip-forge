@@ -5,6 +5,7 @@ enum SubtitleStylePreset: String, CaseIterable, Codable, Identifiable {
     case classic
     case tikTok
     case tikTokYellow
+    case custom
 
     var id: String { rawValue }
 
@@ -13,6 +14,7 @@ enum SubtitleStylePreset: String, CaseIterable, Codable, Identifiable {
         case .classic: return "Default"
         case .tikTok: return "TikTok"
         case .tikTokYellow: return "TikTok Yellow"
+        case .custom: return "Custom"
         }
     }
 
@@ -21,7 +23,20 @@ enum SubtitleStylePreset: String, CaseIterable, Codable, Identifiable {
         case .classic: return .classic
         case .tikTok: return .tikTok
         case .tikTokYellow: return .tikTokYellow
+        case .custom: return .classic
         }
+    }
+}
+
+struct CustomSubtitlePreset: Identifiable, Codable, Equatable {
+    var id: UUID
+    var name: String
+    var style: SubtitleStyle
+
+    init(id: UUID = UUID(), name: String, style: SubtitleStyle) {
+        self.id = id
+        self.name = name
+        self.style = style
     }
 }
 

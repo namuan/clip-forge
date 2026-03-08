@@ -111,6 +111,7 @@ final class ClipForgeViewModel: ObservableObject {
     private(set) var videoOriginalName: String = ""
 
     private static let recentsKey = "recentProjects"
+    private static let subtitleStyleConfigKey = "subtitleStyleConfiguration"
     private static let maxRecents = 10
 
     // MARK: - Export state
@@ -126,6 +127,9 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var subtitleError: String? = nil
     @Published var includeSubtitlesInExport: Bool = true
     @Published var subtitleStylePreset: SubtitleStylePreset = .classic
+    @Published var subtitleStyle: SubtitleStyle = .classic
+    @Published var customSubtitlePresets: [CustomSubtitlePreset] = []
+    @Published var selectedCustomSubtitlePresetID: UUID? = nil
     @Published var subtitleLocaleOptions: [SubtitleLocaleOption] = []
     @Published var isLoadingSubtitleLocales: Bool = false
     /// BCP-47 locale identifier for transcription.
@@ -138,8 +142,16 @@ final class ClipForgeViewModel: ObservableObject {
 
     // MARK: - Init
 
+    private struct SubtitleStyleConfiguration: Codable {
+        var preset: SubtitleStylePreset
+        var style: SubtitleStyle
+        var customPresets: [CustomSubtitlePreset]
+        var selectedCustomPresetID: UUID?
+    }
+
     init() { 
         loadRecents()
+        loadSubtitleStyleConfiguration()
         Task { await refreshSubtitleLocaleOptions() }
         CFLogInfo("ClipForgeViewModel initialized")
     }
@@ -163,6 +175,38 @@ final class ClipForgeViewModel: ObservableObject {
     private func persistRecents() {
         guard let data = try? JSONEncoder().encode(recentProjects) else { return }
         UserDefaults.standard.set(data, forKey: Self.recentsKey)
+    }
+
+    private func loadSubtitleStyleConfiguration() {
+        guard
+            let data = UserDefaults.standard.data(forKey: Self.subtitleStyleConfigKey),
+            let config = try? JSONDecoder().decode(SubtitleStyleConfiguration.self, from: data)
+        else {
+            return
+        }
+
+        subtitleStylePreset = config.preset
+        subtitleStyle = config.style
+        customSubtitlePresets = config.customPresets
+
+        if let selectedID = config.selectedCustomPresetID,
+           customSubtitlePresets.contains(where: { $0.id == selectedID }) {
+            selectedCustomSubtitlePresetID = selectedID
+        } else {
+            selectedCustomSubtitlePresetID = nil
+        }
+    }
+
+    private func persistSubtitleStyleConfiguration() {
+        let config = SubtitleStyleConfiguration(
+            preset: subtitleStylePreset,
+            style: subtitleStyle,
+            customPresets: customSubtitlePresets,
+            selectedCustomPresetID: selectedCustomSubtitlePresetID
+        )
+
+        guard let data = try? JSONEncoder().encode(config) else { return }
+        UserDefaults.standard.set(data, forKey: Self.subtitleStyleConfigKey)
     }
 
     func addToRecents(name: String, projectFileURL: URL) {
@@ -668,7 +712,85 @@ final class ClipForgeViewModel: ObservableObject {
     }
 
     var selectedSubtitleStyle: SubtitleStyle {
-        subtitleStylePreset.subtitleStyle
+        subtitleStyle
+    }
+
+    func selectSubtitleStylePreset(_ preset: SubtitleStylePreset) {
+        guard preset != .custom else {
+            subtitleStylePreset = .custom
+            selectedCustomSubtitlePresetID = nil
+            persistSubtitleStyleConfiguration()
+            return
+        }
+
+        subtitleStylePreset = preset
+        subtitleStyle = preset.subtitleStyle
+        selectedCustomSubtitlePresetID = nil
+        persistSubtitleStyleConfiguration()
+    }
+
+    func updateSubtitleStyle(_ mutate: (inout SubtitleStyle) -> Void) {
+        var updated = subtitleStyle
+        mutate(&updated)
+        subtitleStyle = updated
+
+        if let builtIn = builtInPreset(matching: updated) {
+            subtitleStylePreset = builtIn
+            selectedCustomSubtitlePresetID = nil
+        } else {
+            subtitleStylePreset = .custom
+
+            if let selectedID = selectedCustomSubtitlePresetID,
+               let selected = customSubtitlePresets.first(where: { $0.id == selectedID }),
+               selected.style != updated {
+                selectedCustomSubtitlePresetID = nil
+            }
+        }
+
+        persistSubtitleStyleConfiguration()
+    }
+
+    func saveCurrentSubtitleStyleAsPreset(named name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        if let existingIndex = customSubtitlePresets.firstIndex(where: {
+            $0.name.compare(trimmed, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }) {
+            customSubtitlePresets[existingIndex].style = subtitleStyle
+            selectedCustomSubtitlePresetID = customSubtitlePresets[existingIndex].id
+        } else {
+            let preset = CustomSubtitlePreset(name: trimmed, style: subtitleStyle)
+            customSubtitlePresets.append(preset)
+            selectedCustomSubtitlePresetID = preset.id
+        }
+
+        subtitleStylePreset = .custom
+        persistSubtitleStyleConfiguration()
+    }
+
+    func applyCustomSubtitlePreset(id: UUID) {
+        guard let preset = customSubtitlePresets.first(where: { $0.id == id }) else { return }
+        subtitleStyle = preset.style
+        subtitleStylePreset = .custom
+        selectedCustomSubtitlePresetID = preset.id
+        persistSubtitleStyleConfiguration()
+    }
+
+    func deleteCustomSubtitlePreset(id: UUID) {
+        customSubtitlePresets.removeAll { $0.id == id }
+        if selectedCustomSubtitlePresetID == id {
+            selectedCustomSubtitlePresetID = nil
+            subtitleStylePreset = builtInPreset(matching: subtitleStyle) ?? .custom
+        }
+        persistSubtitleStyleConfiguration()
+    }
+
+    private func builtInPreset(matching style: SubtitleStyle) -> SubtitleStylePreset? {
+        if style == .classic { return .classic }
+        if style == .tikTok { return .tikTok }
+        if style == .tikTokYellow { return .tikTokYellow }
+        return nil
     }
 
     /// Starts on-device subtitle generation for the loaded video.
