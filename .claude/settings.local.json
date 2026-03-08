@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(swift build:*)",
-      "WebFetch(domain:screen.studio)"
+      "WebFetch(domain:screen.studio)",
+      "Bash(swift:*)"
     ]
   }
 }

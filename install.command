@@ -75,6 +75,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key>  <true/>
   <key>NSPhotoLibraryUsageDescription</key>
     <string>Required to import videos from your photo library.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+    <string>ClipForge uses on-device speech recognition to generate subtitles for your videos. No audio is sent to any server.</string>
 </dict>
 </plist>
 PLIST

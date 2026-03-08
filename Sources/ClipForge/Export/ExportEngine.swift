@@ -334,6 +334,7 @@ func exportVideo(
     asset: AVURLAsset,
     segments: [ZoomSegment],
     annotations: [Annotation],
+    subtitles: [SubtitleSegment] = [],
     background: BackgroundSettings,
     trimStart: Double,
     trimEnd: Double,
@@ -455,6 +456,21 @@ func exportVideo(
                               arrowFilled: ann.arrowFilled)
         }
     CFLogDebug("ExportEngine: Adjusted \(adjustedAnnotations.count) annotations for export")
+
+    // Adjust subtitle times for trim offset and speed
+    let adjustedSubtitles: [SubtitleSegment] = subtitles
+        .filter { $0.start < clampedEnd && $0.end > trimStart }
+        .compactMap { seg in
+            let clippedStart = max(seg.start, trimStart)
+            let clippedEnd   = min(seg.end,   clampedEnd)
+            guard clippedEnd > clippedStart else { return nil }
+            return SubtitleSegment(
+                start: max(0, (clippedStart - trimStart) / speed),
+                end:   max(0, (clippedEnd   - trimStart) / speed),
+                text:  seg.text
+            )
+        }
+    CFLogDebug("ExportEngine: Adjusted \(adjustedSubtitles.count) subtitle(s) for export (of \(subtitles.count) total)")
 
     // ── 4. Layer instruction — eased zoom sampled at 30 fps ──────────────────
     let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
@@ -631,6 +647,64 @@ func exportVideo(
         )
 
         parentLayer.addSublayer(shapeLayer)
+    }
+
+    // ── Subtitle burn-in (bottom center of video) ─────────────────────────────
+    if !adjustedSubtitles.isEmpty {
+        CFLogInfo("ExportEngine: Burning in \(adjustedSubtitles.count) subtitle(s)")
+        let subtitleFontSize = max(16, 0.038 * renderSize.width)
+        let ctFont = annotationCTFont(size: subtitleFontSize, weight: 0.0) // regular weight
+        // Subtitles sit at 88% from the top of the video (near the bottom)
+        let subtitleRelativeY: CGFloat = 0.88
+        let bgPadX: CGFloat = 14
+        let bgPadY: CGFloat = 6
+        let maxTextWidth = max(1, renderSize.width * 0.88)
+
+        for (idx, sub) in adjustedSubtitles.enumerated() {
+            let textSize = annotationTextSize(text: sub.text, font: ctFont, maxWidth: maxTextWidth)
+            let centerX = hPad + renderSize.width / 2
+            let centerY = vPad + subtitleRelativeY * renderSize.height
+
+            let textFrame = CGRect(
+                x: centerX - textSize.width / 2,
+                y: centerY - textSize.height / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+
+            let visibility = makeVisibilityOpacityAnimation(
+                startTime: sub.start,
+                duration: sub.duration,
+                totalDuration: exportDurationSeconds
+            )
+
+            // Semi-transparent dark background pill
+            let subtitleBGLayer = CALayer()
+            subtitleBGLayer.frame = textFrame.insetBy(dx: -bgPadX, dy: -bgPadY)
+            subtitleBGLayer.backgroundColor = CGColor(red: 0, green: 0, blue: 0, alpha: 0.72)
+            subtitleBGLayer.cornerRadius = 5
+            subtitleBGLayer.opacity = 1
+            subtitleBGLayer.add(visibility, forKey: "visibility")
+            parentLayer.addSublayer(subtitleBGLayer)
+
+            // White subtitle text
+            let subtitleTextLayer = CALayer()
+            subtitleTextLayer.contents = annotationTextImage(
+                text: sub.text,
+                font: ctFont,
+                textColor: CGColor(red: 1, green: 1, blue: 1, alpha: 1),
+                size: textSize,
+                drawsShadow: false
+            )
+            subtitleTextLayer.contentsScale = 2
+            subtitleTextLayer.contentsGravity = .resize
+            subtitleTextLayer.frame = textFrame
+            subtitleTextLayer.opacity = 1
+            subtitleTextLayer.add(visibility, forKey: "visibility")
+            parentLayer.addSublayer(subtitleTextLayer)
+
+            CFLogDebug("ExportEngine: Subtitle \(idx + 1)/\(adjustedSubtitles.count) layer: [\(String(format: "%.2f", sub.start))s–\(String(format: "%.2f", sub.end))s] \"\(sub.text)\"")
+        }
     }
 
     videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(

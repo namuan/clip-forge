@@ -114,6 +114,15 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var alertMessage: String?
     @Published var showAlert: Bool = false
 
+    // MARK: - Subtitle state
+    @Published var subtitles: [SubtitleSegment] = []
+    @Published var isGeneratingSubtitles: Bool = false
+    @Published var subtitleProgress: String = ""
+    @Published var subtitleError: String? = nil
+    @Published var includeSubtitlesInExport: Bool = true
+    /// BCP-47 locale identifier for transcription; empty string = device locale.
+    @Published var subtitleLocaleID: String = ""
+
     // MARK: - Internal
     private var asset: AVURLAsset?
     private var timeObserverToken: Any?
@@ -277,6 +286,10 @@ final class ClipForgeViewModel: ObservableObject {
         currentProjectURL    = nil
         projectName          = ""
         hasUnsavedChanges    = false
+        subtitles            = []
+        subtitleProgress     = ""
+        subtitleError        = nil
+        isGeneratingSubtitles = false
         CFLogInfo("Video loaded successfully, original name: \(videoOriginalName)")
     }
 
@@ -597,6 +610,107 @@ final class ClipForgeViewModel: ObservableObject {
         CFLogInfo("Project loaded successfully: \(project.name), segments: \(segments.count), annotations: \(annotations.count)")
     }
 
+    // MARK: - Subtitles
+
+    /// Effective locale derived from `subtitleLocaleID`: empty = device locale.
+    var subtitleLocale: Locale {
+        subtitleLocaleID.isEmpty ? .current : Locale(identifier: subtitleLocaleID)
+    }
+
+    /// Starts on-device subtitle generation for the loaded video.
+    /// Updates `subtitleProgress`, `subtitleError`, and `subtitles` on completion.
+    func generateSubtitles() {
+        guard let asset else {
+            CFLogError("ViewModel: generateSubtitles called but no asset loaded")
+            subtitleError = "No video loaded."
+            return
+        }
+        guard !isGeneratingSubtitles else {
+            CFLogWarn("ViewModel: generateSubtitles called but already in progress")
+            return
+        }
+
+        let locale = subtitleLocale
+        CFLogInfo("ViewModel: Starting subtitle generation, locale=\(locale.identifier)")
+        isGeneratingSubtitles = true
+        subtitleError = nil
+        subtitleProgress = "Requesting authorization…"
+
+        Task {
+            do {
+                // ── 1. Authorization ──────────────────────────────────────
+                let authorized = await requestSpeechAuthorization()
+                guard authorized else {
+                    CFLogError("ViewModel: Speech authorization denied")
+                    subtitleProgress = ""
+                    subtitleError = SubtitleError.authorizationDenied.errorDescription
+                    isGeneratingSubtitles = false
+                    return
+                }
+
+                // ── 2. Audio extraction ───────────────────────────────────
+                subtitleProgress = "Extracting audio…"
+                CFLogInfo("ViewModel: Extracting audio from asset")
+                let audioURL = try await extractAudio(from: asset)
+
+                defer {
+                    CFLogDebug("ViewModel: Cleaning up temp audio file \(audioURL.lastPathComponent)")
+                    try? FileManager.default.removeItem(at: audioURL)
+                }
+
+                // ── 3. Transcription ──────────────────────────────────────
+                subtitleProgress = "Transcribing on-device…"
+                CFLogInfo("ViewModel: Starting transcription")
+
+                let segs: [SubtitleSegment]
+                if #available(macOS 26.0, iOS 26.0, *) {
+                    CFLogInfo("ViewModel: Using SpeechAnalyzer path (macOS 26+)")
+                    segs = try await transcribeWithSpeechAnalyzer(audioURL: audioURL, locale: locale)
+                } else {
+                    CFLogInfo("ViewModel: Using legacy SFSpeechRecognizer path")
+                    segs = try await transcribeLegacy(audioURL: audioURL, locale: locale)
+                }
+
+                // ── 4. Done ───────────────────────────────────────────────
+                subtitles = segs
+                subtitleProgress = segs.isEmpty ? "No speech detected." : "Done — \(segs.count) subtitle(s) generated."
+                isGeneratingSubtitles = false
+                CFLogInfo("ViewModel: Subtitle generation complete — \(segs.count) segment(s)")
+
+            } catch {
+                subtitleProgress = ""
+                subtitleError = error.localizedDescription
+                isGeneratingSubtitles = false
+                CFLogError("ViewModel: Subtitle generation failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Removes all generated subtitles.
+    func clearSubtitles() {
+        CFLogInfo("ViewModel: Clearing \(subtitles.count) subtitle(s)")
+        subtitles = []
+        subtitleProgress = ""
+        subtitleError = nil
+    }
+
+    /// Removes a single subtitle segment.
+    func removeSubtitle(id: UUID) {
+        subtitles.removeAll { $0.id == id }
+        CFLogInfo("ViewModel: Removed subtitle \(id)")
+    }
+
+    /// Writes the current subtitles to a temporary SRT file and returns the URL.
+    func makeSRTFileURL() -> URL? {
+        guard !subtitles.isEmpty else {
+            CFLogWarn("ViewModel: makeSRTFileURL called but subtitles is empty")
+            return nil
+        }
+        let baseName = videoOriginalName.isEmpty ? "subtitles"
+            : (videoOriginalName as NSString).deletingPathExtension
+        return writeSRTToTemp(segments: subtitles, baseName: baseName)
+    }
+
     // MARK: - Export
 
     func exportVideo(quality: ExportQualityOption) {
@@ -618,16 +732,19 @@ final class ClipForgeViewModel: ObservableObject {
 
         let segs = segments
         let anns = annotations
+        let subs = includeSubtitlesInExport ? subtitles : []
         let bg = backgroundSettings
         let ts = trimStart
         let te = effectiveTrimEnd
         let spd = playbackSpeed
         let presetName = quality.presetName
+        CFLogInfo("ViewModel: Export will include \(subs.count) subtitle(s) (burn-in: \(includeSubtitlesInExport))")
 
         Task {
             do {
                 try await ClipForge.exportVideo(
                     asset: asset, segments: segs, annotations: anns,
+                    subtitles: subs,
                     background: bg, trimStart: ts, trimEnd: te, speed: spd,
                     outputURL: outURL,
                     presetName: presetName)

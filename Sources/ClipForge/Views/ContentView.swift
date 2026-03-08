@@ -7,17 +7,19 @@ import AppKit
 // MARK: - Control panel tabs
 
 private enum ControlPanel: String, CaseIterable {
-    case zoom       = "Zoom"
+    case zoom        = "Zoom"
     case annotations = "Annotations"
-    case canvas     = "Canvas"
-    case clip       = "Clip"
+    case canvas      = "Canvas"
+    case clip        = "Clip"
+    case subtitles   = "Subtitles"
 
     var icon: String {
         switch self {
-        case .zoom:   return "magnifyingglass"
+        case .zoom:        return "magnifyingglass"
         case .annotations: return "text.bubble"
-        case .canvas: return "paintpalette"
-        case .clip:   return "scissors"
+        case .canvas:      return "paintpalette"
+        case .clip:        return "scissors"
+        case .subtitles:   return "captions.bubble"
         }
     }
 }
@@ -54,7 +56,7 @@ struct ContentView: View {
                         #if canImport(AppKit)
                         HSplitView {
                             leftColumn.frame(minWidth: 400, maxWidth: .infinity)
-                            rightColumn.frame(minWidth: 200, maxWidth: 300)
+                            rightColumn.frame(minWidth: 260, idealWidth: 320, maxWidth: 420)
                         }
                         #else
                         HStack(spacing: 0) { leftColumn; Divider(); rightColumn }
@@ -242,10 +244,11 @@ struct ContentView: View {
                     // ── Active panel ───────────────────────────────────────
                     Group {
                         switch activePanel {
-                        case .zoom:   ZoomControlsView(vm: vm)
+                        case .zoom:        ZoomControlsView(vm: vm)
                         case .annotations: AnnotationControlsView(vm: vm)
-                        case .canvas: BackgroundControlsView(vm: vm)
-                        case .clip:   ClipControlsView(vm: vm)
+                        case .canvas:      BackgroundControlsView(vm: vm)
+                        case .clip:        ClipControlsView(vm: vm)
+                        case .subtitles:   SubtitleControlsView(vm: vm)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -444,9 +447,7 @@ struct ContentView: View {
         panel.allowedContentTypes = [.mpeg4Movie]
         guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
         do {
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
-            }
+            try? FileManager.default.removeItem(at: destinationURL)
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
         } catch {
             vm.showError(error.localizedDescription)
