@@ -13,6 +13,8 @@ struct SubtitleControlsView: View {
             // ── Language & Generate ───────────────────────────────────────
             languageSection
 
+            stylePresetSection
+
             Divider()
 
             generateSection
@@ -70,6 +72,54 @@ struct SubtitleControlsView: View {
     }
 
     // MARK: - Generate section
+
+    private var stylePresetSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Style")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    presetButton(
+                        title: "Default",
+                        preset: .classic,
+                        tint: .gray,
+                        foreground: .white
+                    )
+
+                    presetButton(
+                        title: "TikTok",
+                        preset: .tikTok,
+                        tint: .black,
+                        foreground: .white
+                    )
+
+                    presetButton(
+                        title: "TikTok Yellow",
+                        preset: .tikTokYellow,
+                        tint: .yellow,
+                        foreground: .black
+                    )
+                }
+            }
+        }
+    }
+
+    private func presetButton(
+        title: String,
+        preset: SubtitleStylePreset,
+        tint: Color,
+        foreground: Color
+    ) -> some View {
+        Button(title) {
+            vm.subtitleStylePreset = preset
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(tint)
+        .foregroundStyle(foreground)
+        .opacity(vm.subtitleStylePreset == preset ? 1 : 0.75)
+    }
 
     private var generateSection: some View {
         VStack(alignment: .leading, spacing: 8) {

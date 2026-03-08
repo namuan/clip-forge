@@ -243,6 +243,98 @@ private func annotationTextSize(
     return CGSize(width: ceil(max(1, measured.width)), height: ceil(max(1, measured.height)))
 }
 
+private func subtitleCTFont(style: SubtitleStyle, videoWidth: CGFloat) -> CTFont {
+    let scale = style.autoScaleToFit ? max(0.5, videoWidth / 1080) : 1
+    let fontSize = max(14, style.fontSize * scale)
+    let name = style.fontName as CFString
+    return CTFontCreateWithName(name, fontSize, nil)
+}
+
+private func subtitleTextImage(
+    text: String,
+    font: CTFont,
+    style: SubtitleStyle,
+    size: CGSize,
+    textInset: CGFloat,
+    scale: CGFloat
+) -> CGImage? {
+    let textRasterScale: CGFloat = 2
+    let drawSize = CGSize(width: max(1, size.width), height: max(1, size.height))
+    let pixelW = max(1, Int(ceil(drawSize.width * textRasterScale)))
+    let pixelH = max(1, Int(ceil(drawSize.height * textRasterScale)))
+
+    guard let ctx = CGContext(
+        data: nil,
+        width: pixelW,
+        height: pixelH,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+
+    ctx.scaleBy(x: textRasterScale, y: textRasterScale)
+    ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0))
+    ctx.fill(CGRect(origin: .zero, size: drawSize))
+
+    let shadowBlur = max(0, style.shadowBlur * scale)
+    let shadowOffset = CGSize(width: style.shadowOffset.width * scale, height: style.shadowOffset.height * scale)
+    if shadowBlur > 0 || shadowOffset != .zero {
+        let c = style.shadowColor
+        ctx.setShadow(
+            offset: shadowOffset,
+            blur: shadowBlur,
+            color: CGColor(red: c.red, green: c.green, blue: c.blue, alpha: 0.95)
+        )
+    }
+
+    let paragraphStyle = annotationParagraphStyle()
+    let fg = style.textColor
+    let stroke = style.outlineColor
+    let outlineWidth = max(0, style.outlineWidth * scale)
+
+    var attrs: [NSAttributedString.Key: Any] = [
+        NSAttributedString.Key(rawValue: kCTFontAttributeName as String): font,
+        NSAttributedString.Key(rawValue: kCTForegroundColorAttributeName as String): CGColor(
+            red: fg.red,
+            green: fg.green,
+            blue: fg.blue,
+            alpha: 1
+        ),
+        NSAttributedString.Key(rawValue: kCTParagraphStyleAttributeName as String): paragraphStyle
+    ]
+
+    if outlineWidth > 0 {
+        attrs[NSAttributedString.Key(rawValue: kCTStrokeColorAttributeName as String)] = CGColor(
+            red: stroke.red,
+            green: stroke.green,
+            blue: stroke.blue,
+            alpha: 1
+        )
+        attrs[NSAttributedString.Key(rawValue: kCTStrokeWidthAttributeName as String)] = -outlineWidth
+    }
+
+    let attributed = NSAttributedString(string: text, attributes: attrs)
+    let framesetter = CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
+    let textRect = CGRect(
+        x: textInset,
+        y: textInset,
+        width: max(1, drawSize.width - (textInset * 2)),
+        height: max(1, drawSize.height - (textInset * 2))
+    )
+    let path = CGMutablePath()
+    path.addRect(textRect)
+    let frame = CTFramesetterCreateFrame(
+        framesetter,
+        CFRange(location: 0, length: attributed.length),
+        path,
+        nil
+    )
+
+    CTFrameDraw(frame, ctx)
+    return ctx.makeImage()
+}
+
 private func annotationArrowPaths(
     start: CGPoint,
     end: CGPoint,
@@ -335,6 +427,7 @@ func exportVideo(
     segments: [ZoomSegment],
     annotations: [Annotation],
     subtitles: [SubtitleSegment] = [],
+    subtitleStyle: SubtitleStyle = .classic,
     background: BackgroundSettings,
     trimStart: Double,
     trimEnd: Double,
@@ -652,24 +745,34 @@ func exportVideo(
     // ── Subtitle burn-in (bottom center of video) ─────────────────────────────
     if !adjustedSubtitles.isEmpty {
         CFLogInfo("ExportEngine: Burning in \(adjustedSubtitles.count) subtitle(s)")
-        let subtitleFontSize = max(16, 0.038 * renderSize.width)
-        let ctFont = annotationCTFont(size: subtitleFontSize, weight: 0.0) // regular weight
-        // Subtitles sit at 88% from the top of the video (near the bottom)
-        let subtitleRelativeY: CGFloat = 0.88
-        let bgPadX: CGFloat = 14
-        let bgPadY: CGFloat = 6
-        let maxTextWidth = max(1, renderSize.width * 0.88)
+        let styleScale = subtitleStyle.autoScaleToFit ? max(0.5, renderSize.width / 1080) : 1
+        let ctFont = subtitleCTFont(style: subtitleStyle, videoWidth: renderSize.width)
+        let subtitleRelativeY = subtitleStyle.verticalPosition.clamped(to: 0.05...0.95)
+        let horizontalMargin = subtitleStyle.horizontalMargin.clamped(to: 0...0.3)
+        let maxTextWidth = max(1, renderSize.width * (1 - horizontalMargin * 2))
+        let bgPadding = max(6, subtitleStyle.backgroundPadding * styleScale)
+        let outline = max(0, subtitleStyle.outlineWidth * styleScale)
+        let shadowBlur = max(0, subtitleStyle.shadowBlur * styleScale)
+        let shadowOffset = CGSize(
+            width: subtitleStyle.shadowOffset.width * styleScale,
+            height: subtitleStyle.shadowOffset.height * styleScale
+        )
+        let textInset = max(2, outline + shadowBlur + max(abs(shadowOffset.width), abs(shadowOffset.height)))
+        let subtitleBG = subtitleStyle.backgroundColor
+        let subtitleBGAlpha = subtitleStyle.backgroundOpacity.clamped(to: 0...1)
 
         for (idx, sub) in adjustedSubtitles.enumerated() {
             let textSize = annotationTextSize(text: sub.text, font: ctFont, maxWidth: maxTextWidth)
+            let drawSize = CGSize(width: textSize.width + (textInset * 2),
+                                  height: textSize.height + (textInset * 2))
             let centerX = hPad + renderSize.width / 2
             let centerY = vPad + subtitleRelativeY * renderSize.height
 
             let textFrame = CGRect(
-                x: centerX - textSize.width / 2,
-                y: centerY - textSize.height / 2,
-                width: textSize.width,
-                height: textSize.height
+                x: centerX - drawSize.width / 2,
+                y: centerY - drawSize.height / 2,
+                width: drawSize.width,
+                height: drawSize.height
             )
 
             let visibility = makeVisibilityOpacityAnimation(
@@ -680,21 +783,27 @@ func exportVideo(
 
             // Semi-transparent dark background pill
             let subtitleBGLayer = CALayer()
-            subtitleBGLayer.frame = textFrame.insetBy(dx: -bgPadX, dy: -bgPadY)
-            subtitleBGLayer.backgroundColor = CGColor(red: 0, green: 0, blue: 0, alpha: 0.72)
-            subtitleBGLayer.cornerRadius = 5
+            subtitleBGLayer.frame = textFrame.insetBy(dx: -bgPadding, dy: -(bgPadding * 0.45))
+            subtitleBGLayer.backgroundColor = CGColor(
+                red: subtitleBG.red,
+                green: subtitleBG.green,
+                blue: subtitleBG.blue,
+                alpha: subtitleBGAlpha
+            )
+            subtitleBGLayer.cornerRadius = max(5, bgPadding * 0.3)
             subtitleBGLayer.opacity = 1
             subtitleBGLayer.add(visibility, forKey: "visibility")
             parentLayer.addSublayer(subtitleBGLayer)
 
-            // White subtitle text
+            // Outlined TikTok-style subtitle text
             let subtitleTextLayer = CALayer()
-            subtitleTextLayer.contents = annotationTextImage(
+            subtitleTextLayer.contents = subtitleTextImage(
                 text: sub.text,
                 font: ctFont,
-                textColor: CGColor(red: 1, green: 1, blue: 1, alpha: 1),
-                size: textSize,
-                drawsShadow: false
+                style: subtitleStyle,
+                size: drawSize,
+                textInset: textInset,
+                scale: styleScale
             )
             subtitleTextLayer.contentsScale = 2
             subtitleTextLayer.contentsGravity = .resize

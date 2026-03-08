@@ -125,6 +125,7 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var subtitleProgress: String = ""
     @Published var subtitleError: String? = nil
     @Published var includeSubtitlesInExport: Bool = true
+    @Published var subtitleStylePreset: SubtitleStylePreset = .classic
     @Published var subtitleLocaleOptions: [SubtitleLocaleOption] = []
     @Published var isLoadingSubtitleLocales: Bool = false
     /// BCP-47 locale identifier for transcription.
@@ -666,6 +667,10 @@ final class ClipForgeViewModel: ObservableObject {
         subtitleLocaleID.isEmpty ? .current : Locale(identifier: subtitleLocaleID)
     }
 
+    var selectedSubtitleStyle: SubtitleStyle {
+        subtitleStylePreset.subtitleStyle
+    }
+
     /// Starts on-device subtitle generation for the loaded video.
     /// Updates `subtitleProgress`, `subtitleError`, and `subtitles` on completion.
     func generateSubtitles() {
@@ -788,6 +793,7 @@ final class ClipForgeViewModel: ObservableObject {
         let segs = segments
         let anns = annotations
         let subs = includeSubtitlesInExport ? subtitles : []
+        let subtitleStyle = selectedSubtitleStyle
         let bg = backgroundSettings
         let ts = trimStart
         let te = effectiveTrimEnd
@@ -800,6 +806,7 @@ final class ClipForgeViewModel: ObservableObject {
                 try await ClipForge.exportVideo(
                     asset: asset, segments: segs, annotations: anns,
                     subtitles: subs,
+                    subtitleStyle: subtitleStyle,
                     background: bg, trimStart: ts, trimEnd: te, speed: spd,
                     outputURL: outURL,
                     presetName: presetName)
