@@ -341,15 +341,21 @@ func exportVideo(
     outputURL: URL,
     presetName: String = AVAssetExportPresetHighestQuality
 ) async throws {
+    CFLogInfo("ExportEngine: Starting export, trim: \(trimStart)-\(trimEnd), speed: \(speed), preset: \(presetName)")
 
     // ── 1. Composition ────────────────────────────────────────────────────────
     let composition = AVMutableComposition()
+    CFLogDebug("ExportEngine: Created composition")
 
     guard
         let srcVideo = try await asset.loadTracks(withMediaType: .video).first,
         let compVideo = composition.addMutableTrack(
             withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-    else { throw ExportError.noVideoTrack }
+    else { 
+        CFLogError("ExportEngine: No video track found")
+        throw ExportError.noVideoTrack 
+    }
+    CFLogDebug("ExportEngine: Added video track to composition")
 
     let assetDuration = try await asset.load(.duration)
     let clampedEnd    = min(trimEnd, CMTimeGetSeconds(assetDuration))
@@ -359,6 +365,7 @@ func exportVideo(
     )
 
     try compVideo.insertTimeRange(trimRange, of: srcVideo, at: .zero)
+    CFLogDebug("ExportEngine: Inserted video time range")
 
     var compAudio: AVMutableCompositionTrack?
     if let srcAudio = try await asset.loadTracks(withMediaType: .audio).first,
@@ -366,6 +373,7 @@ func exportVideo(
            withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
         try ca.insertTimeRange(trimRange, of: srcAudio, at: .zero)
         compAudio = ca
+        CFLogDebug("ExportEngine: Added audio track")
     }
 
     // Apply speed by scaling the inserted time range
@@ -375,15 +383,18 @@ func exportVideo(
                                     preferredTimescale: 600)
         compVideo.scaleTimeRange(insertedRange, toDuration: scaledDuration)
         compAudio?.scaleTimeRange(insertedRange, toDuration: scaledDuration)
+        CFLogDebug("ExportEngine: Applied speed scaling: \(speed)")
     }
 
     let exportDuration = CMTime(seconds: (clampedEnd - trimStart) / speed, preferredTimescale: 600)
     let exportDurationSeconds = CMTimeGetSeconds(exportDuration)
     let exportRange    = CMTimeRange(start: .zero, duration: exportDuration)
+    CFLogDebug("ExportEngine: Export duration: \(exportDurationSeconds) seconds")
 
     // ── 2. Geometry ──────────────────────────────────────────────────────────
     let naturalSize       = try await srcVideo.load(.naturalSize)
     let preferredTransform = try await srcVideo.load(.preferredTransform)
+    CFLogDebug("ExportEngine: Video natural size: \(naturalSize), transform: \(preferredTransform)")
 
     // Video dimensions after rotation
     let renderSize: CGSize = {
@@ -398,6 +409,7 @@ func exportVideo(
     let hPad       = f * renderSize.width
     let vPad       = f * renderSize.height
     let canvasSize = CGSize(width: renderSize.width + 2 * hPad, height: renderSize.height + 2 * vPad)
+    CFLogDebug("ExportEngine: Canvas size: \(canvasSize), padding: \(hPad)x\(vPad)")
 
     // ── 3. Adjust segment times for trim offset and speed ────────────────────
     let adjustedSegments: [ZoomSegment] = segments
@@ -413,6 +425,7 @@ func exportVideo(
                         isEnabled: true)
         }
         .sorted { $0.startTime < $1.startTime }
+    CFLogDebug("ExportEngine: Adjusted \(adjustedSegments.count) zoom segments for export")
 
     // Adjust annotation times too
     let adjustedAnnotations: [Annotation] = annotations
@@ -441,6 +454,7 @@ func exportVideo(
                               arrowDoubleHeaded: ann.arrowDoubleHeaded,
                               arrowFilled: ann.arrowFilled)
         }
+    CFLogDebug("ExportEngine: Adjusted \(adjustedAnnotations.count) annotations for export")
 
     // ── 4. Layer instruction — eased zoom sampled at 30 fps ──────────────────
     let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
@@ -630,13 +644,25 @@ func exportVideo(
     session.videoComposition = videoComposition
     session.outputURL        = outputURL
     session.outputFileType   = .mp4
+    CFLogInfo("ExportEngine: Starting export session to: \(outputURL.lastPathComponent)")
+    
     await session.export()
 
     switch session.status {
-    case .completed: return
-    case .failed:    throw ExportError.exportSessionFailed(session.error?.localizedDescription ?? "unknown")
-    case .cancelled: throw ExportError.exportSessionFailed("Cancelled")
-    default:         throw ExportError.exportSessionFailed("Unexpected status \(session.status.rawValue)")
+    case .completed: 
+        CFLogInfo("ExportEngine: Export completed successfully")
+        return
+    case .failed:    
+        let errorMsg = session.error?.localizedDescription ?? "unknown"
+        CFLogError("ExportEngine: Export failed: \(errorMsg)")
+        throw ExportError.exportSessionFailed(errorMsg)
+    case .cancelled: 
+        CFLogWarn("ExportEngine: Export cancelled")
+        throw ExportError.exportSessionFailed("Cancelled")
+    default:         
+        let errorMsg = "Unexpected status \(session.status.rawValue)"
+        CFLogError("ExportEngine: \(errorMsg)")
+        throw ExportError.exportSessionFailed(errorMsg)
     }
 }
 

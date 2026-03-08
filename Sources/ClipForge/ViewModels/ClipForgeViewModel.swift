@@ -121,18 +121,25 @@ final class ClipForgeViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init() { loadRecents() }
+    init() { 
+        loadRecents()
+        CFLogInfo("ClipForgeViewModel initialized")
+    }
 
     // MARK: - Recent projects
 
     private func loadRecents() {
+        CFLogDebug("Loading recent projects from UserDefaults")
         guard let data = UserDefaults.standard.data(forKey: Self.recentsKey),
               let decoded = try? JSONDecoder().decode([RecentProject].self, from: data)
-        else { return }
-        // Filter to entries whose file still exists on disk
+        else { 
+            CFLogDebug("No recent projects found in UserDefaults")
+            return 
+        }
         recentProjects = decoded.filter {
             FileManager.default.fileExists(atPath: $0.projectFileURL.path)
         }
+        CFLogInfo("Loaded \(self.recentProjects.count) recent projects")
     }
 
     private func persistRecents() {
@@ -141,6 +148,7 @@ final class ClipForgeViewModel: ObservableObject {
     }
 
     func addToRecents(name: String, projectFileURL: URL) {
+        CFLogDebug("Adding to recents: \(name)")
         recentProjects.removeAll { $0.projectFileURL == projectFileURL }
         recentProjects.insert(
             RecentProject(id: UUID(), name: name, projectFileURL: projectFileURL, lastOpened: Date()),
@@ -152,11 +160,13 @@ final class ClipForgeViewModel: ObservableObject {
     }
 
     func removeFromRecents(id: UUID) {
+        CFLogDebug("Removing from recents: \(id)")
         recentProjects.removeAll { $0.id == id }
         persistRecents()
     }
 
     func deleteProject(_ recent: RecentProject) throws {
+        CFLogInfo("Deleting project: \(recent.name) at \(recent.projectFileURL.path)")
         let fm = FileManager.default
         let projectFileURL = recent.projectFileURL
 
@@ -172,6 +182,7 @@ final class ClipForgeViewModel: ObservableObject {
             $0.id == recent.id || $0.projectFileURL == recent.projectFileURL
         }
         persistRecents()
+        CFLogInfo("Project deleted successfully: \(recent.name)")
     }
 
     private func shouldDeleteProjectDirectory(for projectFileURL: URL) -> Bool {
@@ -210,6 +221,7 @@ final class ClipForgeViewModel: ObservableObject {
 
     /// Sets up AVPlayer without resetting any project state.
     private func setupPlayer(url: URL) {
+        CFLogInfo("Setting up player with URL: \(url.lastPathComponent)")
         cleanupPlayer()
         let asset = AVURLAsset(url: url)
         self.asset = asset
@@ -223,6 +235,7 @@ final class ClipForgeViewModel: ObservableObject {
                 Task { @MainActor in
                     let d = try? await asset.load(.duration)
                     self.duration = d.map { CMTimeGetSeconds($0) } ?? 0
+                    CFLogInfo("Video ready to play, duration: \(self.duration) seconds")
                 }
             }
 
@@ -237,6 +250,7 @@ final class ClipForgeViewModel: ObservableObject {
                     self.currentTime = t
                     if t >= self.effectiveTrimEnd - 0.01 && self.isPlaying {
                         self.player?.pause(); self.isPlaying = false
+                        CFLogDebug("Playback stopped at end")
                     }
                 }
             }
@@ -246,10 +260,12 @@ final class ClipForgeViewModel: ObservableObject {
             self, selector: #selector(playerDidFinish),
             name: .AVPlayerItemDidPlayToEndTime, object: item)
         player.play(); isPlaying = true
+        CFLogInfo("Player setup complete, started playback")
     }
 
     /// Load a fresh video, resetting all project state.
     func loadVideo(url: URL, originalFileName: String? = nil) {
+        CFLogInfo("Loading video: \(url.lastPathComponent)")
         setupPlayer(url: url)
         videoOriginalName    = originalFileName ?? url.lastPathComponent
         segments             = []
@@ -261,35 +277,46 @@ final class ClipForgeViewModel: ObservableObject {
         currentProjectURL    = nil
         projectName          = ""
         hasUnsavedChanges    = false
+        CFLogInfo("Video loaded successfully, original name: \(videoOriginalName)")
     }
 
-    @objc private func playerDidFinish() { isPlaying = false }
+    @objc private func playerDidFinish() { 
+        isPlaying = false
+        CFLogDebug("Player finished playing")
+    }
 
     // MARK: - Playback
 
     func togglePlayPause() {
-        guard let player else { return }
+        guard let player else { 
+            CFLogWarn("togglePlayPause called but player is nil")
+            return 
+        }
         if isPlaying {
             player.pause(); isPlaying = false
+            CFLogDebug("Playback paused at time: \(currentTime)")
         } else {
             if currentTime >= effectiveTrimEnd - 0.05 { seek(to: trimStart) }
             player.rate = Float(playbackSpeed); isPlaying = true
+            CFLogDebug("Playback started at time: \(currentTime), speed: \(playbackSpeed)")
         }
     }
 
     func seek(to time: Double) {
         player?.seek(to: CMTime(seconds: time, preferredTimescale: 600),
                      toleranceBefore: .zero, toleranceAfter: .zero)
+        CFLogDebug("Seeked to time: \(time)")
     }
 
     private let frameDuration = 1.0 / 30.0
-    func stepForward() { let t = min(currentTime + frameDuration, effectiveTrimEnd); currentTime = t; seek(to: t) }
-    func stepBack()    { let t = max(currentTime - frameDuration, trimStart);        currentTime = t; seek(to: t) }
+    func stepForward() { let t = min(currentTime + frameDuration, effectiveTrimEnd); currentTime = t; seek(to: t); CFLogDebug("Stepped forward to: \(t)") }
+    func stepBack()    { let t = max(currentTime - frameDuration, trimStart);        currentTime = t; seek(to: t); CFLogDebug("Stepped back to: \(t)") }
 
     func setSpeed(_ speed: Double) {
         playbackSpeed = speed
         if isPlaying { player?.rate = Float(speed) }
         hasUnsavedChanges = true
+        CFLogInfo("Playback speed changed to: \(speed)")
     }
 
     // MARK: - Zoom segments
@@ -301,12 +328,16 @@ final class ClipForgeViewModel: ObservableObject {
         segments.sort { $0.startTime < $1.startTime }
         selectedSegmentID = seg.id
         hasUnsavedChanges = true
+        CFLogInfo("Added zoom segment at time: \(t), id: \(seg.id)")
     }
 
     func updateSegment(id: UUID, scale: CGFloat? = nil, center: CGPoint? = nil,
                        easeIn: Double? = nil, easeOut: Double? = nil,
                        startTime: Double? = nil, duration: Double? = nil) {
-        guard let idx = segments.firstIndex(where: { $0.id == id }) else { return }
+        guard let idx = segments.firstIndex(where: { $0.id == id }) else { 
+            CFLogWarn("updateSegment called but segment not found: \(id)")
+            return 
+        }
         var s = segments[idx]
         if let v = scale     { s.scale = v }
         if let v = center    { s.center = v }
@@ -317,18 +348,24 @@ final class ClipForgeViewModel: ObservableObject {
         if let v = easeOut { s.easeOut = max(0, min(v, d / 2)) }
         segments[idx] = s
         hasUnsavedChanges = true
+        CFLogDebug("Updated segment \(id)")
     }
 
     func toggleSegmentEnabled(id: UUID) {
-        guard let idx = segments.firstIndex(where: { $0.id == id }) else { return }
+        guard let idx = segments.firstIndex(where: { $0.id == id }) else { 
+            CFLogWarn("toggleSegmentEnabled called but segment not found: \(id)")
+            return 
+        }
         segments[idx].isEnabled.toggle()
         hasUnsavedChanges = true
+        CFLogInfo("Segment \(id) enabled: \(segments[idx].isEnabled)")
     }
 
     func removeSegment(id: UUID) {
         segments.removeAll { $0.id == id }
         if selectedSegmentID == id { selectedSegmentID = nil }
         hasUnsavedChanges = true
+        CFLogInfo("Removed segment: \(id)")
     }
 
     func removeSegment(at offsets: IndexSet) {
@@ -336,6 +373,7 @@ final class ClipForgeViewModel: ObservableObject {
         segments.remove(atOffsets: offsets)
         if let sid = selectedSegmentID, ids.contains(sid) { selectedSegmentID = nil }
         hasUnsavedChanges = true
+        CFLogInfo("Removed segments at offsets: \(offsets)")
     }
 
     // MARK: - Annotations
@@ -367,6 +405,7 @@ final class ClipForgeViewModel: ObservableObject {
         pendingAnnotationText = ""
         selectedAnnotationID  = ann.id
         hasUnsavedChanges     = true
+        CFLogInfo("Added annotation: \(pendingAnnotationKind.rawValue), id: \(ann.id)")
     }
 
     func addAnnotationSegment(at time: Double? = nil) {
@@ -387,6 +426,7 @@ final class ClipForgeViewModel: ObservableObject {
         annotations.append(ann)
         selectedAnnotationID = ann.id
         hasUnsavedChanges    = true
+        CFLogInfo("Added annotation segment: \(pendingAnnotationKind.rawValue), id: \(ann.id), time: \(t)")
     }
 
     func updateAnnotation(id: UUID, text: String? = nil, startTime: Double? = nil,
@@ -399,7 +439,10 @@ final class ClipForgeViewModel: ObservableObject {
                           backgroundCornerRadius: CGFloat? = nil,
                           arrowHeadSize: CGFloat? = nil, arrowHeadAngle: CGFloat? = nil,
                           arrowDoubleHeaded: Bool? = nil, arrowFilled: Bool? = nil) {
-        guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        guard let idx = annotations.firstIndex(where: { $0.id == id }) else { 
+            CFLogWarn("updateAnnotation called but annotation not found: \(id)")
+            return 
+        }
         if let v = text                   { annotations[idx].text                   = v }
         if let v = startTime              { annotations[idx].startTime              = max(0, v) }
         if let v = duration               { annotations[idx].duration               = max(0.3, v) }
@@ -419,12 +462,14 @@ final class ClipForgeViewModel: ObservableObject {
         if let v = arrowDoubleHeaded      { annotations[idx].arrowDoubleHeaded      = v }
         if let v = arrowFilled            { annotations[idx].arrowFilled            = v }
         hasUnsavedChanges = true
+        CFLogDebug("Updated annotation: \(id)")
     }
 
     func removeAnnotation(id: UUID) {
         annotations.removeAll { $0.id == id }
         if selectedAnnotationID == id { selectedAnnotationID = nil }
         hasUnsavedChanges = true
+        CFLogInfo("Removed annotation: \(id)")
     }
 
     func deleteAnnotations(at offsets: IndexSet) {
@@ -432,6 +477,7 @@ final class ClipForgeViewModel: ObservableObject {
         annotations.remove(atOffsets: offsets)
         if let sid = selectedAnnotationID, ids.contains(sid) { selectedAnnotationID = nil }
         hasUnsavedChanges = true
+        CFLogInfo("Removed annotations at offsets: \(offsets)")
     }
 
     // MARK: - Live zoom preview
@@ -458,17 +504,25 @@ final class ClipForgeViewModel: ObservableObject {
     // MARK: - Project: Save
 
     func saveProject(name: String) throws {
-        guard let asset else { throw ProjectError.noVideo }
+        CFLogInfo("Saving project: \(name)")
+        guard let asset else { 
+            CFLogError("saveProject failed: no video loaded")
+            throw ProjectError.noVideo 
+        }
         let fm = FileManager.default
 
         let safeName = name
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
-        guard !safeName.isEmpty else { throw ProjectError.noVideo }
+        guard !safeName.isEmpty else { 
+            CFLogError("saveProject failed: invalid name")
+            throw ProjectError.noVideo 
+        }
 
         let projectDir = Self.appDocumentsDir.appendingPathComponent(safeName)
         try fm.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        CFLogDebug("Created project directory: \(projectDir.path)")
 
         // Determine video filename to use inside the project folder
         let ext = asset.url.pathExtension.isEmpty ? "mp4" : asset.url.pathExtension
@@ -477,6 +531,7 @@ final class ClipForgeViewModel: ObservableObject {
 
         if !fm.fileExists(atPath: videoDestURL.path) {
             try fm.copyItem(at: asset.url, to: videoDestURL)
+            CFLogDebug("Copied video to: \(videoDestURL.path)")
         }
 
         let project = ClipForgeProject(
@@ -491,29 +546,37 @@ final class ClipForgeViewModel: ObservableObject {
 
         let data = try JSONEncoder().encode(project)
         try data.write(to: projectDir.appendingPathComponent(ClipForgeProject.fileName))
+        CFLogDebug("Wrote project file")
 
         currentProjectURL = projectDir
         projectName       = safeName
         hasUnsavedChanges = false
         addToRecents(name: safeName,
                      projectFileURL: projectDir.appendingPathComponent(ClipForgeProject.fileName))
+        CFLogInfo("Project saved successfully: \(safeName)")
     }
 
     /// Re-saves to the existing project folder (must already have a project URL).
     func saveCurrentProject() throws {
-        guard let dir = currentProjectURL else { return }
+        guard let dir = currentProjectURL else { 
+            CFLogWarn("saveCurrentProject called but no current project URL")
+            return 
+        }
+        CFLogInfo("Saving current project to: \(dir.lastPathComponent)")
         try saveProject(name: dir.lastPathComponent)
     }
 
     // MARK: - Project: Load
 
     func loadProject(from projectFile: URL) throws {
+        CFLogInfo("Loading project from: \(projectFile.path)")
         let data    = try Data(contentsOf: projectFile)
         let project = try JSONDecoder().decode(ClipForgeProject.self, from: data)
         let dir     = projectFile.deletingLastPathComponent()
         let videoURL = dir.appendingPathComponent(project.videoFileName)
 
         guard FileManager.default.fileExists(atPath: videoURL.path) else {
+            CFLogError("Video file missing: \(project.videoFileName)")
             throw ProjectError.videoFileMissing(project.videoFileName)
         }
 
@@ -531,13 +594,22 @@ final class ClipForgeViewModel: ObservableObject {
         projectName          = project.name
         hasUnsavedChanges    = false
         addToRecents(name: project.name, projectFileURL: projectFile)
+        CFLogInfo("Project loaded successfully: \(project.name), segments: \(segments.count), annotations: \(annotations.count)")
     }
 
     // MARK: - Export
 
     func exportVideo(quality: ExportQualityOption) {
-        guard let asset else { showError("No video loaded."); return }
-        guard !isExporting else { return }
+        CFLogInfo("Starting export with quality: \(quality.title)")
+        guard let asset else { 
+            CFLogError("exportVideo failed: no video loaded")
+            showError("No video loaded."); 
+            return 
+        }
+        guard !isExporting else { 
+            CFLogWarn("exportVideo called but export already in progress")
+            return 
+        }
         isExporting = true
         exportURL = nil
 
@@ -559,9 +631,17 @@ final class ClipForgeViewModel: ObservableObject {
                     background: bg, trimStart: ts, trimEnd: te, speed: spd,
                     outputURL: outURL,
                     presetName: presetName)
-                await MainActor.run { self.exportURL = outURL; self.isExporting = false }
+                await MainActor.run { 
+                    self.exportURL = outURL; 
+                    self.isExporting = false
+                    CFLogInfo("Export completed successfully: \(outURL.lastPathComponent)")
+                }
             } catch {
-                await MainActor.run { self.isExporting = false; self.showError(error.localizedDescription) }
+                await MainActor.run { 
+                    self.isExporting = false; 
+                    self.showError(error.localizedDescription)
+                    CFLogError("Export failed: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -570,7 +650,11 @@ final class ClipForgeViewModel: ObservableObject {
         exportVideo(quality: defaultExportQuality)
     }
 
-    func showError(_ msg: String) { alertMessage = msg; showAlert = true }
+    func showError(_ msg: String) { 
+        alertMessage = msg; 
+        showAlert = true
+        CFLogError("Error shown to user: \(msg)")
+    }
 
     // MARK: - Cleanup
 
@@ -579,7 +663,10 @@ final class ClipForgeViewModel: ObservableObject {
         player?.pause(); player = nil
         playerItemCancellable = nil
         NotificationCenter.default.removeObserver(self)
+        CFLogDebug("Player cleaned up")
     }
 
-    deinit {}
+    deinit {
+        CFLogInfo("ClipForgeViewModel deallocated")
+    }
 }
