@@ -93,6 +93,52 @@ func extractAudio(from asset: AVAsset) async throws -> URL {
     }
 }
 
+// MARK: - Segment Merging
+
+/// Merges short consecutive subtitle segments into longer lines.
+///
+/// Segments that already contain `minWords` or more words are kept as-is.
+/// Shorter segments are accumulated until the combined text reaches `minWords`,
+/// a silence gap exceeds `maxGap`, or the merged duration would exceed `maxDuration`.
+func mergeShortSegments(
+    _ segments: [SubtitleSegment],
+    minWords: Int = 4,
+    maxDuration: TimeInterval = 6.0,
+    maxGap: TimeInterval = 1.5
+) -> [SubtitleSegment] {
+    guard !segments.isEmpty else { return [] }
+    CFLogDebug("SubtitleGenerator: Merging \(segments.count) segment(s) (minWords=\(minWords), maxGap=\(maxGap)s)")
+
+    var result: [SubtitleSegment] = []
+    var acc = segments[0]
+
+    for seg in segments.dropFirst() {
+        let accWordCount = acc.text.split(separator: " ").count
+
+        // Accumulator is already long enough — flush and start fresh.
+        if accWordCount >= minWords {
+            result.append(acc)
+            acc = seg
+            continue
+        }
+
+        let gap = seg.start - acc.end
+        let mergedDuration = seg.end - acc.start
+
+        if gap <= maxGap && mergedDuration <= maxDuration {
+            acc = SubtitleSegment(id: acc.id, start: acc.start, end: seg.end,
+                                  text: acc.text + " " + seg.text)
+        } else {
+            result.append(acc)
+            acc = seg
+        }
+    }
+
+    result.append(acc)
+    CFLogInfo("SubtitleGenerator: Merge pass: \(segments.count) → \(result.count) segment(s)")
+    return result
+}
+
 // MARK: - Word Grouping (Legacy Path)
 
 /// Groups word-level `SFTranscriptionSegment`s into subtitle lines.

@@ -671,11 +671,12 @@ final class ClipForgeViewModel: ObservableObject {
                     segs = try await transcribeLegacy(audioURL: audioURL, locale: locale)
                 }
 
-                // ── 4. Done ───────────────────────────────────────────────
-                subtitles = segs
-                subtitleProgress = segs.isEmpty ? "No speech detected." : "Done — \(segs.count) subtitle(s) generated."
+                // ── 4. Merge short segments → done ───────────────────────
+                let merged = mergeShortSegments(segs)
+                subtitles = merged
+                subtitleProgress = merged.isEmpty ? "No speech detected." : "Done — \(merged.count) subtitle(s) generated."
                 isGeneratingSubtitles = false
-                CFLogInfo("ViewModel: Subtitle generation complete — \(segs.count) segment(s)")
+                CFLogInfo("ViewModel: Subtitle generation complete — \(segs.count) raw → \(merged.count) after merge")
 
             } catch {
                 subtitleProgress = ""
