@@ -7,23 +7,6 @@ import UniformTypeIdentifiers
 struct SubtitleControlsView: View {
     @ObservedObject var vm: ClipForgeViewModel
 
-    /// Common locales offered in the picker. Empty identifier = device locale.
-    private let localeOptions: [(id: String, name: String)] = [
-        ("",      "Device Default"),
-        ("en-US", "English (US)"),
-        ("en-GB", "English (UK)"),
-        ("de-DE", "Deutsch"),
-        ("fr-FR", "Français"),
-        ("es-ES", "Español"),
-        ("ja-JP", "日本語"),
-        ("zh-Hans", "中文 (简体)"),
-        ("ko-KR", "한국어"),
-        ("it-IT", "Italiano"),
-        ("pt-BR", "Português (BR)"),
-        ("ru-RU", "Русский"),
-        ("ar-SA", "العربية"),
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
 
@@ -44,6 +27,9 @@ struct SubtitleControlsView: View {
 
             Spacer(minLength: 0)
         }
+        .onAppear {
+            vm.refreshSubtitleLocaleOptionsIfNeeded()
+        }
     }
 
     // MARK: - Language section
@@ -54,13 +40,32 @@ struct SubtitleControlsView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
+            if vm.isLoadingSubtitleLocales {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Checking offline models…")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
             Picker("", selection: $vm.subtitleLocaleID) {
-                ForEach(localeOptions, id: \.id) { option in
-                    Text(option.name).tag(option.id)
+                if vm.subtitleLocaleOptions.isEmpty {
+                    Text("No offline languages available").tag("")
+                } else {
+                    ForEach(vm.subtitleLocaleOptions) { option in
+                        Text(option.name).tag(option.id)
+                    }
                 }
             }
             .labelsHidden()
-            .disabled(vm.isGeneratingSubtitles)
+            .disabled(vm.isGeneratingSubtitles || vm.isLoadingSubtitleLocales || vm.subtitleLocaleOptions.isEmpty)
+
+            if vm.subtitleLocaleOptions.isEmpty, !vm.isLoadingSubtitleLocales {
+                Text("No downloaded offline speech models found.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 
@@ -79,7 +84,7 @@ struct SubtitleControlsView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(vm.isGeneratingSubtitles)
+            .disabled(vm.isGeneratingSubtitles || vm.isLoadingSubtitleLocales || vm.subtitleLocaleOptions.isEmpty)
 
             // Progress
             if vm.isGeneratingSubtitles {

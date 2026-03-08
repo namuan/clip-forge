@@ -41,6 +41,46 @@ func requestSpeechAuthorization() async -> Bool {
     }
 }
 
+// MARK: - Locale Discovery
+
+/// Returns locales that can be transcribed on-device without requiring network access.
+/// On newer OS versions this is backed by the installed SpeechTranscriber assets.
+func availableOfflineTranscriptionLocales() async -> [Locale] {
+    let locales: [Locale]
+
+    if #available(macOS 26.0, iOS 26.0, *) {
+        locales = await SpeechTranscriber.installedLocales
+        CFLogInfo("SubtitleGenerator: Found \(locales.count) installed SpeechTranscriber locale(s)")
+    } else {
+        // Legacy Speech API does not expose installed assets; this is the best on-device proxy.
+        let supported = SFSpeechRecognizer.supportedLocales()
+        locales = supported.compactMap { locale in
+            guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
+                return nil
+            }
+            return locale
+        }
+        CFLogInfo("SubtitleGenerator: Found \(locales.count) legacy locale(s) with on-device recognition support")
+    }
+
+    return deduplicatedAndSortedLocales(locales)
+}
+
+private func deduplicatedAndSortedLocales(_ locales: [Locale]) -> [Locale] {
+    var byIdentifier: [String: Locale] = [:]
+
+    for locale in locales {
+        let canonicalID = Locale.identifier(.bcp47, from: locale.identifier)
+        byIdentifier[canonicalID] = locale
+    }
+
+    return byIdentifier.values.sorted { lhs, rhs in
+        let lhsName = Locale.current.localizedString(forIdentifier: lhs.identifier) ?? lhs.identifier
+        let rhsName = Locale.current.localizedString(forIdentifier: rhs.identifier) ?? rhs.identifier
+        return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
+    }
+}
+
 // MARK: - Audio Extraction
 
 /// Exports the audio track of an AVAsset to a temporary .m4a file.

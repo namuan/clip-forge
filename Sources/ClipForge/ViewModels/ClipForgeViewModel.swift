@@ -40,6 +40,11 @@ enum ExportQualityOption: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+struct SubtitleLocaleOption: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+}
+
 @MainActor
 final class ClipForgeViewModel: ObservableObject {
 
@@ -120,7 +125,9 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var subtitleProgress: String = ""
     @Published var subtitleError: String? = nil
     @Published var includeSubtitlesInExport: Bool = true
-    /// BCP-47 locale identifier for transcription; empty string = device locale.
+    @Published var subtitleLocaleOptions: [SubtitleLocaleOption] = []
+    @Published var isLoadingSubtitleLocales: Bool = false
+    /// BCP-47 locale identifier for transcription.
     @Published var subtitleLocaleID: String = ""
 
     // MARK: - Internal
@@ -132,6 +139,7 @@ final class ClipForgeViewModel: ObservableObject {
 
     init() { 
         loadRecents()
+        Task { await refreshSubtitleLocaleOptions() }
         CFLogInfo("ClipForgeViewModel initialized")
     }
 
@@ -612,7 +620,48 @@ final class ClipForgeViewModel: ObservableObject {
 
     // MARK: - Subtitles
 
-    /// Effective locale derived from `subtitleLocaleID`: empty = device locale.
+    func refreshSubtitleLocaleOptionsIfNeeded() {
+        guard subtitleLocaleOptions.isEmpty, !isLoadingSubtitleLocales else { return }
+        Task { await refreshSubtitleLocaleOptions() }
+    }
+
+    func refreshSubtitleLocaleOptions() async {
+        guard !isLoadingSubtitleLocales else { return }
+
+        isLoadingSubtitleLocales = true
+        let locales = await availableOfflineTranscriptionLocales()
+        let options = locales.map { locale in
+            let displayName = Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier
+            return SubtitleLocaleOption(id: locale.identifier, name: displayName)
+        }
+        subtitleLocaleOptions = options
+        isLoadingSubtitleLocales = false
+
+        guard !options.isEmpty else {
+            subtitleLocaleID = ""
+            CFLogWarn("ViewModel: No offline subtitle locales found")
+            return
+        }
+
+        if options.contains(where: { localeIdentifiersMatch($0.id, subtitleLocaleID) }) {
+            return
+        }
+
+        let currentLocaleID = Locale.current.identifier
+        if let currentOption = options.first(where: { localeIdentifiersMatch($0.id, currentLocaleID) }) {
+            subtitleLocaleID = currentOption.id
+        } else {
+            subtitleLocaleID = options[0].id
+        }
+
+        CFLogInfo("ViewModel: Loaded \(options.count) offline subtitle locale option(s)")
+    }
+
+    private func localeIdentifiersMatch(_ lhs: String, _ rhs: String) -> Bool {
+        Locale.identifier(.bcp47, from: lhs) == Locale.identifier(.bcp47, from: rhs)
+    }
+
+    /// Effective locale derived from `subtitleLocaleID`.
     var subtitleLocale: Locale {
         subtitleLocaleID.isEmpty ? .current : Locale(identifier: subtitleLocaleID)
     }
@@ -627,6 +676,11 @@ final class ClipForgeViewModel: ObservableObject {
         }
         guard !isGeneratingSubtitles else {
             CFLogWarn("ViewModel: generateSubtitles called but already in progress")
+            return
+        }
+        guard !subtitleLocaleOptions.isEmpty else {
+            CFLogWarn("ViewModel: generateSubtitles called with no offline locale options")
+            subtitleError = "No offline speech models are installed for transcription."
             return
         }
 
