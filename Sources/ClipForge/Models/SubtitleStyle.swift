@@ -61,7 +61,7 @@ extension SubtitleStyle {
     )
 
     static let tikTok = SubtitleStyle(
-        fontName: "Helvetica-Bold",
+        fontName: "SFPro-Bold",
         fontSize: 52,
         textColor: .init(red: 1, green: 1, blue: 1),
         outlineColor: .init(red: 0, green: 0, blue: 0),
@@ -78,7 +78,7 @@ extension SubtitleStyle {
     )
 
     static let tikTokYellow = SubtitleStyle(
-        fontName: "Helvetica-Bold",
+        fontName: "SFPro-Bold",
         fontSize: 52,
         textColor: .init(red: 1.0, green: 0.95, blue: 0.0),
         outlineColor: .init(red: 0, green: 0, blue: 0),

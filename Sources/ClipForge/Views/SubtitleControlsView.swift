@@ -112,13 +112,38 @@ struct SubtitleControlsView: View {
         tint: Color,
         foreground: Color
     ) -> some View {
-        Button(title) {
+        let isSelected = vm.subtitleStylePreset == preset
+
+        return Button {
             vm.subtitleStylePreset = preset
+        } label: {
+            HStack(spacing: 6) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                }
+                Text(title)
+                    .font(.caption.weight(.semibold))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(minHeight: 28)
+            .foregroundStyle(isSelected ? foreground : .secondary)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? tint : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(
+                        isSelected ? tint.opacity(0.95) : Color.primary.opacity(0.2),
+                        lineWidth: isSelected ? 2.2 : 1
+                    )
+            )
+            .shadow(color: isSelected ? tint.opacity(0.55) : .clear, radius: 8)
+            .opacity(isSelected ? 1 : 0.55)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(tint)
-        .foregroundStyle(foreground)
-        .opacity(vm.subtitleStylePreset == preset ? 1 : 0.75)
+        .buttonStyle(.plain)
     }
 
     private var generateSection: some View {
