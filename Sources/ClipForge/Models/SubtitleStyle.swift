@@ -61,35 +61,35 @@ extension SubtitleStyle {
     )
 
     static let tikTok = SubtitleStyle(
-        fontName: "SFPro-Bold",
+        fontName: "SFProRounded-Black",
         fontSize: 52,
         textColor: .init(red: 1, green: 1, blue: 1),
         outlineColor: .init(red: 0, green: 0, blue: 0),
-        outlineWidth: 7,
+        outlineWidth: 5,
         backgroundColor: .init(red: 0, green: 0, blue: 0),
-        backgroundOpacity: 0.78,
+        backgroundOpacity: 0,
         backgroundPadding: 18,
         shadowColor: .init(red: 0, green: 0, blue: 0),
         shadowBlur: 5,
         shadowOffset: CGSize(width: 0, height: 4),
-        verticalPosition: 0.87,
+        verticalPosition: 0.60,
         horizontalMargin: 0.06,
         autoScaleToFit: true
     )
 
     static let tikTokYellow = SubtitleStyle(
-        fontName: "SFPro-Bold",
+        fontName: "SFProRounded-Black",
         fontSize: 52,
         textColor: .init(red: 1.0, green: 0.95, blue: 0.0),
         outlineColor: .init(red: 0, green: 0, blue: 0),
-        outlineWidth: 7,
+        outlineWidth: 5,
         backgroundColor: .init(red: 0, green: 0, blue: 0),
-        backgroundOpacity: 0.75,
+        backgroundOpacity: 0,
         backgroundPadding: 18,
         shadowColor: .init(red: 0, green: 0, blue: 0),
         shadowBlur: 5,
         shadowOffset: CGSize(width: 0, height: 4),
-        verticalPosition: 0.87,
+        verticalPosition: 0.60,
         horizontalMargin: 0.06,
         autoScaleToFit: true
     )

@@ -127,6 +127,57 @@ private func makeVisibilityOpacityAnimation(
     return anim
 }
 
+private func makeTikTokPopInAnimation(
+    startTime: Double,
+    duration: Double,
+    totalDuration: Double
+) -> CAAnimationGroup {
+    let minimumTimelineDuration = 0.001
+    let total = max(minimumTimelineDuration, totalDuration)
+    let start = max(0, min(startTime, total))
+    let end = max(start, min(start + max(0, duration), total))
+    let visibleDuration = max(0.001, end - start)
+
+    let popDuration = min(0.24, max(0.10, visibleDuration * 0.35))
+    let popMid = min(end, start + popDuration * 0.5)
+    let popEnd = min(end, start + popDuration)
+
+    let fadeOutDuration = min(0.22, visibleDuration * 0.22)
+    let fadeOutStart = max(start, end - fadeOutDuration)
+
+    let opacity = CAKeyframeAnimation(keyPath: "opacity")
+    opacity.values = [0, 0, 1, 1, 0, 0]
+    opacity.keyTimes = [
+        0,
+        NSNumber(value: start / total),
+        NSNumber(value: popEnd / total),
+        NSNumber(value: fadeOutStart / total),
+        NSNumber(value: end / total),
+        1
+    ]
+    opacity.calculationMode = .linear
+
+    let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+    scale.values = [0.86, 0.86, 1.12, 0.98, 1.0, 1.0]
+    scale.keyTimes = [
+        0,
+        NSNumber(value: start / total),
+        NSNumber(value: popMid / total),
+        NSNumber(value: popEnd / total),
+        NSNumber(value: end / total),
+        1
+    ]
+    scale.calculationMode = .cubic
+
+    let group = CAAnimationGroup()
+    group.animations = [opacity, scale]
+    group.beginTime = AVCoreAnimationBeginTimeAtZero
+    group.duration = total
+    group.isRemovedOnCompletion = false
+    group.fillMode = .both
+    return group
+}
+
 /// Builds a CoreText font descriptor with the requested weight for export text layers.
 private func annotationCTFont(size: CGFloat, weight: CGFloat) -> CTFont {
     let traits: [CFString: Any] = [kCTFontWeightTrait: weight]
@@ -760,6 +811,7 @@ func exportVideo(
         let textInset = max(2, outline + shadowBlur + max(abs(shadowOffset.width), abs(shadowOffset.height)))
         let subtitleBG = subtitleStyle.backgroundColor
         let subtitleBGAlpha = subtitleStyle.backgroundOpacity.clamped(to: 0...1)
+        let usesTikTokAnimation = subtitleStyle == .tikTok || subtitleStyle == .tikTokYellow
 
         for (idx, sub) in adjustedSubtitles.enumerated() {
             let textSize = annotationTextSize(text: sub.text, font: ctFont, maxWidth: maxTextWidth)
@@ -780,20 +832,26 @@ func exportVideo(
                 duration: sub.duration,
                 totalDuration: exportDurationSeconds
             )
-
-            // Semi-transparent dark background pill
-            let subtitleBGLayer = CALayer()
-            subtitleBGLayer.frame = textFrame.insetBy(dx: -bgPadding, dy: -(bgPadding * 0.45))
-            subtitleBGLayer.backgroundColor = CGColor(
-                red: subtitleBG.red,
-                green: subtitleBG.green,
-                blue: subtitleBG.blue,
-                alpha: subtitleBGAlpha
+            let tikTokPopIn = makeTikTokPopInAnimation(
+                startTime: sub.start,
+                duration: sub.duration,
+                totalDuration: exportDurationSeconds
             )
-            subtitleBGLayer.cornerRadius = max(5, bgPadding * 0.3)
-            subtitleBGLayer.opacity = 1
-            subtitleBGLayer.add(visibility, forKey: "visibility")
-            parentLayer.addSublayer(subtitleBGLayer)
+
+            if subtitleBGAlpha > 0.001 {
+                let subtitleBGLayer = CALayer()
+                subtitleBGLayer.frame = textFrame.insetBy(dx: -bgPadding, dy: -(bgPadding * 0.45))
+                subtitleBGLayer.backgroundColor = CGColor(
+                    red: subtitleBG.red,
+                    green: subtitleBG.green,
+                    blue: subtitleBG.blue,
+                    alpha: subtitleBGAlpha
+                )
+                subtitleBGLayer.cornerRadius = max(5, bgPadding * 0.3)
+                subtitleBGLayer.opacity = 1
+                subtitleBGLayer.add(visibility, forKey: "visibility")
+                parentLayer.addSublayer(subtitleBGLayer)
+            }
 
             // Outlined TikTok-style subtitle text
             let subtitleTextLayer = CALayer()
@@ -809,7 +867,7 @@ func exportVideo(
             subtitleTextLayer.contentsGravity = .resize
             subtitleTextLayer.frame = textFrame
             subtitleTextLayer.opacity = 1
-            subtitleTextLayer.add(visibility, forKey: "visibility")
+            subtitleTextLayer.add(usesTikTokAnimation ? tikTokPopIn : visibility, forKey: "visibility")
             parentLayer.addSublayer(subtitleTextLayer)
 
             CFLogDebug("ExportEngine: Subtitle \(idx + 1)/\(adjustedSubtitles.count) layer: [\(String(format: "%.2f", sub.start))s–\(String(format: "%.2f", sub.end))s] \"\(sub.text)\"")
