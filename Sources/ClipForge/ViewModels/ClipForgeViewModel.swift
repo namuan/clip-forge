@@ -8,6 +8,7 @@ enum ExportQualityOption: String, CaseIterable, Identifiable, Sendable {
     case p480
     case p720
     case p1080
+    case p4k
     case original
 
     var id: String { rawValue }
@@ -17,6 +18,7 @@ enum ExportQualityOption: String, CaseIterable, Identifiable, Sendable {
         case .p480:    return "480p"
         case .p720:    return "720p"
         case .p1080:   return "1080p"
+        case .p4k:     return "4K"
         case .original:return "Best"
         }
     }
@@ -26,6 +28,7 @@ enum ExportQualityOption: String, CaseIterable, Identifiable, Sendable {
         case .p480:    return "640 × 480"
         case .p720:    return "1280 × 720"
         case .p1080:   return "1920 × 1080"
+        case .p4k:     return "3840 × 2160"
         case .original:return "Highest quality"
         }
     }
@@ -35,6 +38,7 @@ enum ExportQualityOption: String, CaseIterable, Identifiable, Sendable {
         case .p480:    return AVAssetExportPreset640x480
         case .p720:    return AVAssetExportPreset1280x720
         case .p1080:   return AVAssetExportPreset1920x1080
+        case .p4k:     return AVAssetExportPreset3840x2160
         case .original:return AVAssetExportPresetHighestQuality
         }
     }

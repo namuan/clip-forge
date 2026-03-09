@@ -541,8 +541,8 @@ func exportVideo(
     let preferredTransform = try await srcVideo.load(.preferredTransform)
     CFLogDebug("ExportEngine: Video natural size: \(naturalSize), transform: \(preferredTransform)")
 
-    // Video dimensions after rotation
-    let renderSize: CGSize = {
+    // Video dimensions after rotation (source resolution)
+    let nativeRenderSize: CGSize = {
         let t = preferredTransform
         if abs(t.b) > 0.5 || abs(t.c) > 0.5 {
             return CGSize(width: naturalSize.height, height: naturalSize.width)
@@ -550,11 +550,35 @@ func exportVideo(
         return naturalSize
     }()
 
-    let f          = background.paddingFraction
-    let hPad       = f * renderSize.width
-    let vPad       = f * renderSize.height
-    let canvasSize = CGSize(width: renderSize.width + 2 * hPad, height: renderSize.height + 2 * vPad)
-    CFLogDebug("ExportEngine: Canvas size: \(canvasSize), padding: \(hPad)x\(vPad)")
+    let f            = background.paddingFraction
+    let nativeHPad   = f * nativeRenderSize.width
+    let nativeVPad   = f * nativeRenderSize.height
+    let nativeCanvas = CGSize(width:  nativeRenderSize.width  + 2 * nativeHPad,
+                              height: nativeRenderSize.height + 2 * nativeVPad)
+
+    // AVFoundation respects the preset's max resolution only downward — it won't
+    // upscale beyond videoComposition.renderSize. When the preset requests a
+    // higher resolution than the source, enlarge the canvas ourselves.
+    let renderScale: CGFloat = {
+        let desired: CGSize
+        switch presetName {
+        case AVAssetExportPreset3840x2160: desired = CGSize(width: 3840, height: 2160)
+        default: return 1.0
+        }
+        let s = min(desired.width / nativeCanvas.width, desired.height / nativeCanvas.height)
+        return max(1.0, s)
+    }()
+    let renderSize = CGSize(width:  nativeRenderSize.width  * renderScale,
+                            height: nativeRenderSize.height * renderScale)
+    let hPad       = nativeHPad * renderScale
+    let vPad       = nativeVPad * renderScale
+    let canvasSize = CGSize(width:  nativeCanvas.width  * renderScale,
+                            height: nativeCanvas.height * renderScale)
+    if renderScale > 1 {
+        CFLogInfo("ExportEngine: Upscaling canvas to \(Int(canvasSize.width))×\(Int(canvasSize.height)) (scale ×\(String(format: "%.2f", renderScale)))")
+    } else {
+        CFLogDebug("ExportEngine: Canvas size: \(canvasSize), padding: \(hPad)x\(vPad)")
+    }
 
     // ── 3. Adjust segment times for trim offset and speed ────────────────────
     let adjustedSegments: [ZoomSegment] = segments
@@ -619,13 +643,19 @@ func exportVideo(
     // ── 4. Layer instruction — eased zoom sampled at 30 fps ──────────────────
     let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
 
+    // When upscaling, pre-scale the preferred transform so the video fills the
+    // larger render space rather than sitting at its original pixel size.
+    let exportPreferredTransform = renderScale > 1
+        ? preferredTransform.concatenating(CGAffineTransform(scaleX: renderScale, y: renderScale))
+        : preferredTransform
+
     applyEasedZoomRamps(
         to: layerInstruction,
         segments: adjustedSegments,
         exportDuration: exportDurationSeconds,
         videoSize: renderSize,
         paddingX: hPad, paddingY: vPad,
-        preferredTransform: preferredTransform
+        preferredTransform: exportPreferredTransform
     )
 
     // ── 5. Video composition ─────────────────────────────────────────────────
@@ -659,8 +689,8 @@ func exportVideo(
         shadowLayer.fillColor    = CGColor(red: 0, green: 0, blue: 0, alpha: 0)
         shadowLayer.shadowColor  = CGColor(red: 0, green: 0, blue: 0, alpha: 1)
         shadowLayer.shadowOpacity = background.shadowOpacity
-        shadowLayer.shadowRadius  = background.shadowRadius
-        shadowLayer.shadowOffset  = CGSize(width: 0, height: 3)
+        shadowLayer.shadowRadius  = background.shadowRadius * renderScale
+        shadowLayer.shadowOffset  = CGSize(width: 0, height: 3 * renderScale)
         parentLayer.addSublayer(shadowLayer)
     }
 
@@ -682,8 +712,8 @@ func exportVideo(
         let ctFont = annotationCTFont(size: actualFontSize, weight: ann.fontWeight.ctWeight)
 
         // Match preview layout: intrinsic text size + fixed background paddings.
-        let bgPaddingX: CGFloat = ann.showBackground ? 8 : 0
-        let bgPaddingY: CGFloat = ann.showBackground ? 4 : 0
+        let bgPaddingX: CGFloat = ann.showBackground ? 8 * renderScale : 0
+        let bgPaddingY: CGFloat = ann.showBackground ? 4 * renderScale : 0
         let maxTextWidth = max(1, renderSize.width - (bgPaddingX * 2))
         let textSize = annotationTextSize(text: ann.text, font: ctFont, maxWidth: maxTextWidth)
 
@@ -767,7 +797,7 @@ func exportVideo(
                                        width: abs(ex - sx), height: abs(ey - sy)),
                           transform: nil)
         case .circle:
-            let r = hypot(ex - sx, ey - sy)
+            let r: CGFloat = hypot(ex - sx, ey - sy)
             path = CGPath(ellipseIn: CGRect(x: sx - r, y: sy - r, width: r * 2, height: r * 2),
                           transform: nil)
         case .text: continue
@@ -777,7 +807,7 @@ func exportVideo(
         shapeLayer.path           = path
         shapeLayer.fillColor      = fillColor
         shapeLayer.strokeColor    = ann.strokeColor.cgColor
-        shapeLayer.lineWidth      = ann.strokeWidth
+        shapeLayer.lineWidth      = ann.strokeWidth * renderScale
         shapeLayer.frame          = CGRect(origin: .zero, size: canvasSize)
         shapeLayer.opacity        = 1
 
@@ -808,7 +838,8 @@ func exportVideo(
             width: subtitleStyle.shadowOffset.width * styleScale,
             height: subtitleStyle.shadowOffset.height * styleScale
         )
-        let textInset = max(2, outline + shadowBlur + max(abs(shadowOffset.width), abs(shadowOffset.height)))
+        let shadowMaxOffset = max(abs(shadowOffset.width), abs(shadowOffset.height))
+        let textInset: CGFloat = max(2, outline + shadowBlur + shadowMaxOffset)
         let subtitleBG = subtitleStyle.backgroundColor
         let subtitleBGAlpha = subtitleStyle.backgroundOpacity.clamped(to: 0...1)
         let usesTikTokAnimation = subtitleStyle == .tikTok || subtitleStyle == .tikTokYellow
