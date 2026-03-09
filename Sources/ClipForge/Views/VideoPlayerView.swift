@@ -11,7 +11,7 @@ struct VideoPlayerView: View {
         // the inner GeometryReader always reads a stable, pre-determined size —
         // no layout feedback is possible.
         backgroundCanvas
-            .aspectRatio(16 / 9, contentMode: .fit)
+            .aspectRatio(vm.videoAspectRatio, contentMode: .fit)
             .overlay {
                 if let player = vm.player {
                     GeometryReader { geo in

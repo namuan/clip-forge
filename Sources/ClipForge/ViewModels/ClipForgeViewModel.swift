@@ -57,6 +57,7 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var duration: Double = 0
     @Published var currentTime: Double = 0
     @Published var isPlaying: Bool = false
+    @Published var videoAspectRatio: CGFloat = 16.0 / 9.0
 
     // MARK: - Zoom segments & annotations
     @Published var segments: [ZoomSegment] = []
@@ -301,6 +302,21 @@ final class ClipForgeViewModel: ObservableObject {
                 Task { @MainActor in
                     let d = try? await asset.load(.duration)
                     self.duration = d.map { CMTimeGetSeconds($0) } ?? 0
+
+                    if let srcVideo = try? await asset.loadTracks(withMediaType: .video).first,
+                       let naturalSize = try? await srcVideo.load(.naturalSize),
+                       let preferredTransform = try? await srcVideo.load(.preferredTransform) {
+                        let orientedSize: CGSize = {
+                            if abs(preferredTransform.b) > 0.5 || abs(preferredTransform.c) > 0.5 {
+                                return CGSize(width: naturalSize.height, height: naturalSize.width)
+                            }
+                            return naturalSize
+                        }()
+                        if orientedSize.width > 0.001, orientedSize.height > 0.001 {
+                            self.videoAspectRatio = (orientedSize.width / orientedSize.height).clamped(to: 0.2...5)
+                        }
+                    }
+
                     CFLogInfo("Video ready to play, duration: \(self.duration) seconds")
                 }
             }

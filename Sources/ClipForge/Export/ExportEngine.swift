@@ -30,15 +30,18 @@ private func segmentZoomTransform(
     paddingX: CGFloat, paddingY: CGFloat,
     preferredTransform: CGAffineTransform
 ) -> CGAffineTransform {
-    let base = preferredTransform
-        .concatenating(CGAffineTransform(translationX: paddingX, y: paddingY))
+    let padding = CGAffineTransform(translationX: paddingX, y: paddingY)
+    let base = preferredTransform.concatenating(padding)
 
     guard let seg = segments.first(where: { time >= $0.startTime && time <= $0.endTime })
     else { return base }
 
     let (scale, center) = seg.interpolated(localT: time - seg.startTime)
     let zoom = zoomTransform(scale: scale, center: center, videoSize: videoSize)
-    return base.concatenating(zoom)
+    // Keep canvas padding invariant while zooming: rotate/upright -> zoom -> pad.
+    return preferredTransform
+        .concatenating(zoom)
+        .concatenating(padding)
 }
 
 /// Samples the eased zoom curve at `fps` and writes one linear ramp per frame,
@@ -568,14 +571,23 @@ func exportVideo(
         let s = min(desired.width / nativeCanvas.width, desired.height / nativeCanvas.height)
         return max(1.0, s)
     }()
-    let renderSize = CGSize(width:  nativeRenderSize.width  * renderScale,
-                            height: nativeRenderSize.height * renderScale)
-    let hPad       = nativeHPad * renderScale
-    let vPad       = nativeVPad * renderScale
-    let canvasSize = CGSize(width:  nativeCanvas.width  * renderScale,
-                            height: nativeCanvas.height * renderScale)
+    // Quantize geometry to an even-pixel grid so AVFoundation does not silently
+    // round composition dimensions in a different direction than overlay math.
+    func roundedEven(_ value: CGFloat) -> CGFloat {
+        max(2, (value / 2).rounded() * 2)
+    }
+
+    let scaledRenderSize = CGSize(width:  nativeRenderSize.width  * renderScale,
+                                  height: nativeRenderSize.height * renderScale)
+    let renderSize = CGSize(width: roundedEven(scaledRenderSize.width),
+                            height: roundedEven(scaledRenderSize.height))
+
+    let hPad = max(0, (f * renderSize.width).rounded())
+    let vPad = max(0, (f * renderSize.height).rounded())
+    let canvasSize = CGSize(width: roundedEven(renderSize.width + 2 * hPad),
+                            height: roundedEven(renderSize.height + 2 * vPad))
     if renderScale > 1 {
-        CFLogInfo("ExportEngine: Upscaling canvas to \(Int(canvasSize.width))×\(Int(canvasSize.height)) (scale ×\(String(format: "%.2f", renderScale)))")
+        CFLogInfo("ExportEngine: Upscaling canvas to \(Int(canvasSize.width))×\(Int(canvasSize.height)) (requested scale ×\(String(format: "%.2f", renderScale)))")
     } else {
         CFLogDebug("ExportEngine: Canvas size: \(canvasSize), padding: \(hPad)x\(vPad)")
     }
@@ -645,9 +657,16 @@ func exportVideo(
 
     // When upscaling, pre-scale the preferred transform so the video fills the
     // larger render space rather than sitting at its original pixel size.
-    let exportPreferredTransform = renderScale > 1
-        ? preferredTransform.concatenating(CGAffineTransform(scaleX: renderScale, y: renderScale))
-        : preferredTransform
+    let exportPreferredTransform: CGAffineTransform
+    if renderScale > 1 {
+        let scaleX = renderSize.width / max(1, nativeRenderSize.width)
+        let scaleY = renderSize.height / max(1, nativeRenderSize.height)
+        exportPreferredTransform = preferredTransform.concatenating(
+            CGAffineTransform(scaleX: scaleX, y: scaleY)
+        )
+    } else {
+        exportPreferredTransform = preferredTransform
+    }
 
     applyEasedZoomRamps(
         to: layerInstruction,
@@ -694,12 +713,15 @@ func exportVideo(
         parentLayer.addSublayer(shadowLayer)
     }
 
-    // Video layer (clipped to rounded rect)
+    // Video layer must match the full videoComposition renderSize so
+    // AVVideoCompositionCoreAnimationTool composites in one consistent space.
     let videoLayer  = CALayer()
-    videoLayer.frame = CGRect(x: hPad, y: vPad, width: renderSize.width, height: renderSize.height)
+    videoLayer.frame = CGRect(origin: .zero, size: canvasSize)
     if background.cornerRadius > 0 {
         let mask = CAShapeLayer()
-        mask.path = CGPath(roundedRect: CGRect(origin: .zero, size: renderSize),
+        mask.path = CGPath(roundedRect: CGRect(x: hPad, y: vPad,
+                                               width: renderSize.width,
+                                               height: renderSize.height),
                            cornerWidth: background.cornerRadius,
                            cornerHeight: background.cornerRadius, transform: nil)
         videoLayer.mask = mask
