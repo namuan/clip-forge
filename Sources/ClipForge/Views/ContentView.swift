@@ -156,7 +156,7 @@ struct ContentView: View {
                 window.title = "ClipForge"
                 window.toolbar?.isVisible = true
                 window.toolbar?.displayMode = .iconOnly
-                window.toolbar?.sizeMode = .regular
+                window.toolbar?.sizeMode = .small
 
                 // Re-zoom after style restoration so the editor reliably maximizes.
                 if !window.isZoomed { window.zoom(nil) }
@@ -219,9 +219,79 @@ struct ContentView: View {
             VideoPlayerView(vm: vm)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            transportBar
+
             timelinePanel
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var transportBar: some View {
+        HStack(spacing: 14) {
+            Spacer()
+
+            TransportButton(
+                title: "Jump to Start",
+                shortcutDisplay: "⌘←",
+                shortcutHint: "Cmd-Left Arrow",
+                systemImage: "backward.end.fill",
+                size: 13
+            ) { vm.seekToStart() }
+
+            TransportButton(
+                title: vm.jumpBackTitle,
+                shortcutDisplay: "⇧⌥←",
+                shortcutHint: "Shift-Option-Left Arrow",
+                systemImage: "backward.fill",
+                size: 13
+            ) { vm.jumpBack() }
+
+            TransportButton(
+                title: "Step Back 1 Frame",
+                shortcutDisplay: "⌥←",
+                shortcutHint: "Option-Left Arrow",
+                systemImage: "backward.frame.fill",
+                size: 15
+            ) { vm.stepBack() }
+
+            TransportButton(
+                title: vm.playPauseTitle,
+                shortcutDisplay: "Space",
+                shortcutHint: "Space",
+                systemImage: vm.isPlaying ? "pause.fill" : "play.fill",
+                size: 20
+            ) { vm.togglePlayPause() }
+
+            TransportButton(
+                title: "Step Forward 1 Frame",
+                shortcutDisplay: "⌥→",
+                shortcutHint: "Option-Right Arrow",
+                systemImage: "forward.frame.fill",
+                size: 15
+            ) { vm.stepForward() }
+
+            TransportButton(
+                title: vm.jumpForwardTitle,
+                shortcutDisplay: "⇧⌥→",
+                shortcutHint: "Shift-Option-Right Arrow",
+                systemImage: "forward.fill",
+                size: 13
+            ) { vm.jumpForward() }
+
+            TransportButton(
+                title: "Jump to End",
+                shortcutDisplay: "⌘→",
+                shortcutHint: "Cmd-Right Arrow",
+                systemImage: "forward.end.fill",
+                size: 13
+            ) { vm.seekToEnd() }
+
+            Spacer()
+        }
+        .padding(.vertical, 12)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var timelinePanel: some View {
@@ -340,92 +410,14 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if vm.player != nil {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 14) {
-                    TransportButton(
-                        title: "Jump to Start",
-                        shortcutDisplay: "⌘←",
-                        shortcutHint: "Cmd-Left Arrow",
-                        systemImage: "backward.end.fill",
-                        size: 13
-                    ) {
-                        vm.seekToStart()
-                    }
-
-                    TransportButton(
-                        title: vm.jumpBackTitle,
-                        shortcutDisplay: "⇧⌥←",
-                        shortcutHint: "Shift-Option-Left Arrow",
-                        systemImage: "backward.fill",
-                        size: 13
-                    ) {
-                        vm.jumpBack()
-                    }
-
-                    TransportButton(
-                        title: "Step Back 1 Frame",
-                        shortcutDisplay: "⌥←",
-                        shortcutHint: "Option-Left Arrow",
-                        systemImage: "backward.frame.fill",
-                        size: 15
-                    ) {
-                        vm.stepBack()
-                    }
-
-                    TransportButton(
-                        title: vm.playPauseTitle,
-                        shortcutDisplay: "Space",
-                        shortcutHint: "Space",
-                        systemImage: vm.isPlaying ? "pause.fill" : "play.fill",
-                        size: 20
-                    ) {
-                        vm.togglePlayPause()
-                    }
-
-                    TransportButton(
-                        title: "Step Forward 1 Frame",
-                        shortcutDisplay: "⌥→",
-                        shortcutHint: "Option-Right Arrow",
-                        systemImage: "forward.frame.fill",
-                        size: 15
-                    ) {
-                        vm.stepForward()
-                    }
-
-                    TransportButton(
-                        title: vm.jumpForwardTitle,
-                        shortcutDisplay: "⇧⌥→",
-                        shortcutHint: "Shift-Option-Right Arrow",
-                        systemImage: "forward.fill",
-                        size: 13
-                    ) {
-                        vm.jumpForward()
-                    }
-
-                    TransportButton(
-                        title: "Jump to End",
-                        shortcutDisplay: "⌘→",
-                        shortcutHint: "Cmd-Right Arrow",
-                        systemImage: "forward.end.fill",
-                        size: 13
-                    ) {
-                        vm.seekToEnd()
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1), lineWidth: 1))
-            }
-
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 0) {
                     Button { handleSave() } label: {
                         Label("Save", systemImage: "arrow.down.to.line")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .labelStyle(.titleAndIcon)
-                            .padding(.horizontal, 12)
-                            .frame(height: 32)
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
                     }
                     .buttonStyle(.plain)
                     .help("Save Project")
@@ -433,7 +425,7 @@ struct ContentView: View {
                     .keyboardShortcut("s", modifiers: .command)
 
                     Divider()
-                        .frame(height: 20)
+                        .frame(height: 16)
 
                     Button {
                         vm.exportURL = nil
@@ -441,17 +433,17 @@ struct ContentView: View {
                         showExportSheet = true
                     } label: {
                         Label("Export", systemImage: "arrow.up.to.line")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .labelStyle(.titleAndIcon)
-                            .padding(.horizontal, 12)
-                            .frame(height: 32)
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
                     }
                     .buttonStyle(.plain)
                     .help("Export Video")
                     .disabled(vm.player == nil || vm.isExporting)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
                 .background(Capsule().fill(.thinMaterial))
                 .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 1))
             }
