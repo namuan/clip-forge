@@ -38,6 +38,7 @@ struct ContentView: View {
     @State private var activePanel: ControlPanel = .zoom
     @State private var timelinePanelHeight: CGFloat = 220
     @State private var timelineDragBase: CGFloat = 220
+    @State private var showSavedHint = false
 
     var body: some View {
         configured(navigationStack)
@@ -400,6 +401,7 @@ struct ContentView: View {
         showSaveSheet = false
         do {
             try vm.saveProject(name: name)
+            flashSavedHint()
         } catch {
             vm.showError(error.localizedDescription)
         }
@@ -410,6 +412,19 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if vm.player != nil {
+            if showSavedHint {
+                ToolbarItem(placement: .principal) {
+                    Label("Saved", systemImage: "checkmark.circle.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .background(.thinMaterial, in: Capsule())
+                        .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 1))
+                }
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 0) {
                     Button { handleSave() } label: {
@@ -559,11 +574,19 @@ struct ContentView: View {
 
     // MARK: - Save logic
 
+    private func flashSavedHint() {
+        showSavedHint = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            showSavedHint = false
+        }
+    }
+
     private func handleSave() {
         if vm.currentProjectURL != nil {
             // Already has a project — save in place
             do {
                 try vm.saveCurrentProject()
+                flashSavedHint()
             } catch {
                 vm.showError(error.localizedDescription)
             }
