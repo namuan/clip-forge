@@ -368,6 +368,10 @@ struct ContentView: View {
                     }
                     .keyboardShortcut(.rightArrow, modifiers: [.command])
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1), lineWidth: 1))
             }
 
             ToolbarItem(placement: .primaryAction) {
