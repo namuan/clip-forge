@@ -22,6 +22,14 @@ struct VisualTimelineView: View {
     @State private var dragStartOffset: Double = 0     // captured at pan-drag start
     @State private var magnifyBase: CGFloat    = 1.0   // captured at magnify start
 
+    // ── Vertical scroll state (annotation rows) ──────────────────────────────
+    private let maxVisibleAnnLanes: Int        = 3
+    @State private var annScrollOffset: CGFloat = 0
+    @State private var isTimelineHovered: Bool  = false
+    #if canImport(AppKit)
+    @State private var scrollMonitor: Any?
+    #endif
+
     // ── Lane assignment ──────────────────────────────────────────────────────────
     private var lanedAnnotations: [(Annotation, Int)] {
         let sorted = vm.annotations.sorted { $0.startTime < $1.startTime }
@@ -36,9 +44,11 @@ struct VisualTimelineView: View {
         return result
     }
 
-    private var laneCount: Int      { max(1, (lanedAnnotations.map { $0.1 }.max() ?? 0) + 1) }
-    private var annH: CGFloat       { CGFloat(laneCount) * annLaneSlot + 6 }
-    private var totalH: CGFloat     { rulerH + zoomH + annH + 2 }
+    private var laneCount: Int           { max(1, (lanedAnnotations.map { $0.1 }.max() ?? 0) + 1) }
+    private var annH: CGFloat            { CGFloat(laneCount) * annLaneSlot + 6 }
+    private var visibleAnnH: CGFloat     { CGFloat(min(laneCount, maxVisibleAnnLanes)) * annLaneSlot + 6 }
+    private var scrollableAnnH: CGFloat  { max(0, annH - visibleAnnH) }
+    private var totalH: CGFloat          { rulerH + zoomH + visibleAnnH + 2 }
     private var visibleDuration: Double { vm.duration / Double(timelineZoom) }
 
     // Fraction [0,1] of where the playhead sits in the current visible window
@@ -108,6 +118,7 @@ struct VisualTimelineView: View {
                         drawRuler(ctx: ctx, w: size.width, h: size.height)
                         drawZoomRow(ctx: ctx, w: size.width)
                         drawAnnotationRow(ctx: ctx, w: size.width)
+                        drawScrollbar(ctx: ctx, w: size.width)
                         drawTrimOverlay(ctx: ctx, w: size.width, h: size.height)
                         drawPlayhead(ctx: ctx, w: size.width, h: size.height)
                     }
@@ -140,17 +151,23 @@ struct VisualTimelineView: View {
                         }
 
                         let laned = lanedAnnotations
+                        let annAreaTop = rulerH + zoomH + 3
+                        let annAreaBot = annAreaTop + visibleAnnH - 3
                         ForEach(vm.annotations) { ann in
-                            let lane  = laned.first(where: { $0.0.id == ann.id })?.1 ?? 0
-                            let rawX  = xFor(ann.startTime, w: w)
-                            let rawX2 = xFor(ann.startTime + ann.duration, w: w)
-                            let visX  = max(0, rawX)
-                            let visW  = max(4, min(w, rawX2) - visX)
-                            let laneY = CGFloat(lane) * annLaneSlot
-                            if rawX2 > 0 && rawX < w {
+                            let lane   = laned.first(where: { $0.0.id == ann.id })?.1 ?? 0
+                            let rawX   = xFor(ann.startTime, w: w)
+                            let rawX2  = xFor(ann.startTime + ann.duration, w: w)
+                            let visX   = max(0, rawX)
+                            let visW   = max(4, min(w, rawX2) - visX)
+                            let laneY  = CGFloat(lane) * annLaneSlot - annScrollOffset
+                            let itemY  = annAreaTop + laneY
+                            let itemH  = annLaneSlot - 4
+                            let visible = rawX2 > 0 && rawX < w && itemY + itemH > annAreaTop && itemY < annAreaBot
+                            if visible {
                                 Color.clear
-                                    .frame(width: visW, height: annLaneSlot - 4)
-                                    .offset(x: visX, y: rulerH + zoomH + 3 + laneY)
+                                    .frame(width: visW, height: itemH)
+                                    .offset(x: visX, y: itemY)
+                                    .clipped()
                                     .contextMenu {
                                         Button(role: .destructive) {
                                             vm.removeAnnotation(id: ann.id)
@@ -282,9 +299,13 @@ struct VisualTimelineView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.14), lineWidth: 1))
             .padding(.horizontal)
         }
+        .onHover { isTimelineHovered = $0 }
+        .onChange(of: laneCount) {
+            annScrollOffset = annScrollOffset.clamped(to: 0...max(0, scrollableAnnH))
+        }
         #if canImport(AppKit)
-        .onAppear  { installKeyMonitor() }
-        .onDisappear { removeKeyMonitor() }
+        .onAppear  { installKeyMonitor(); installScrollMonitor() }
+        .onDisappear { removeKeyMonitor(); removeScrollMonitor() }
         #endif
     }
 
@@ -358,6 +379,21 @@ struct VisualTimelineView: View {
         if let m = keyMonitor { NSEvent.removeMonitor(m) }
         keyMonitor = nil
     }
+
+    private func installScrollMonitor() {
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            guard isTimelineHovered, scrollableAnnH > 0 else { return event }
+            let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1.0 : 8.0
+            let delta = CGFloat(event.scrollingDeltaY) * scale
+            annScrollOffset = (annScrollOffset - delta).clamped(to: 0...scrollableAnnH)
+            return event
+        }
+    }
+
+    private func removeScrollMonitor() {
+        if let m = scrollMonitor { NSEvent.removeMonitor(m) }
+        scrollMonitor = nil
+    }
     #endif
 
     // MARK: - Zoom
@@ -418,7 +454,8 @@ struct VisualTimelineView: View {
     }
 
     private func annotationAt(x: CGFloat, y: CGFloat, w: CGFloat) -> Annotation? {
-        let tapLane = Int((y - (rulerH + zoomH + 2)) / annLaneSlot)
+        let adjustedY = y + annScrollOffset
+        let tapLane = Int((adjustedY - (rulerH + zoomH + 2)) / annLaneSlot)
         return lanedAnnotations.first(where: { ann, lane in
             lane == tapLane &&
             x >= xFor(ann.startTime, w: w) &&
@@ -452,7 +489,8 @@ struct VisualTimelineView: View {
         }
 
         if isInAnnotationRow(y: y) {
-            let tapLane = Int((y - (rulerH + zoomH + 2)) / annLaneSlot)
+            let adjustedY = y + annScrollOffset
+            let tapLane = Int((adjustedY - (rulerH + zoomH + 2)) / annLaneSlot)
             let eh: CGFloat = 10
             for (ann, lane) in lanedAnnotations {
                 guard lane == tapLane else { continue }
@@ -580,9 +618,13 @@ struct VisualTimelineView: View {
     // MARK: - Annotation row
 
     private func drawAnnotationRow(ctx: GraphicsContext, w: CGFloat) {
-        let rowTop = rulerH + zoomH + 2
+        let rowTop  = rulerH + zoomH + 2
+        let clipRect = CGRect(x: 0, y: rowTop, width: w, height: visibleAnnH)
+        var clipped = ctx
+        clipped.clip(to: Path(clipRect))
+
         let blockH = annLaneSlot - 4
-        ctx.draw(ctx.resolve(Text("ANN").font(.system(size: 8, weight: .semibold))
+        clipped.draw(clipped.resolve(Text("ANN").font(.system(size: 8, weight: .semibold))
             .foregroundColor(Color.white.opacity(0.72))),
             at: CGPoint(x: 5, y: rowTop + 4), anchor: .topLeading)
 
@@ -590,30 +632,48 @@ struct VisualTimelineView: View {
             let x1    = xFor(ann.startTime, w: w)
             let x2    = xFor(ann.startTime + ann.duration, w: w)
             let barW  = max(4, x2 - x1)
-            let laneY = CGFloat(lane) * annLaneSlot
+            let laneY = CGFloat(lane) * annLaneSlot - annScrollOffset
             let rect  = CGRect(x: x1, y: rowTop + 3 + laneY, width: barW, height: blockH)
+            guard rect.maxY > rowTop && rect.minY < rowTop + visibleAnnH else { continue }
             let col   = annColors[i % annColors.count]
             let isSel = ann.id == vm.selectedAnnotationID
 
-            ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(col.opacity(0.5)))
-            ctx.stroke(Path(roundedRect: rect, cornerRadius: 3),
+            clipped.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(col.opacity(0.5)))
+            clipped.stroke(Path(roundedRect: rect, cornerRadius: 3),
                        with: .color(isSel ? .white : col), lineWidth: isSel ? 1.5 : 1)
 
             if barW > 18 {
                 let label = ann.kind == .text ? ann.text : ann.kind.rawValue
-                let lbl = ctx.resolve(Text(label).font(.system(size: 9, weight: .medium)).foregroundColor(.white))
-                var sub = ctx; sub.clip(to: Path(rect.insetBy(dx: 3, dy: 1)))
+                let lbl = clipped.resolve(Text(label).font(.system(size: 9, weight: .medium)).foregroundColor(.white))
+                var sub = clipped; sub.clip(to: Path(rect.insetBy(dx: 3, dy: 1)))
                 sub.draw(lbl, at: CGPoint(x: rect.midX, y: rect.midY), anchor: .center)
             }
 
             let hc = isSel ? Color.white.opacity(0.9) : Color.white.opacity(0.4)
             for hx in [x1 + 2, x2 - 2] {
-                ctx.stroke(Path { p in
+                clipped.stroke(Path { p in
                     p.move(to: CGPoint(x: hx, y: rect.minY + 3))
                     p.addLine(to: CGPoint(x: hx, y: rect.maxY - 3))
                 }, with: .color(hc), lineWidth: 2)
             }
         }
+    }
+
+    // MARK: - Scrollbar
+
+    private func drawScrollbar(ctx: GraphicsContext, w: CGFloat) {
+        guard scrollableAnnH > 0 else { return }
+        let trackX:   CGFloat = w - 7
+        let trackTop: CGFloat = rulerH + zoomH + 4
+        let trackH:   CGFloat = visibleAnnH - 8
+        let ratio  = visibleAnnH / annH
+        let thumbH = max(16, trackH * ratio)
+        let thumbT = trackTop + (trackH - thumbH) * (annScrollOffset / scrollableAnnH)
+
+        ctx.fill(Path(roundedRect: CGRect(x: trackX, y: trackTop, width: 4, height: trackH), cornerRadius: 2),
+                 with: .color(Color.white.opacity(0.08)))
+        ctx.fill(Path(roundedRect: CGRect(x: trackX, y: thumbT, width: 4, height: thumbH), cornerRadius: 2),
+                 with: .color(Color.white.opacity(0.38)))
     }
 
     // MARK: - Trim overlay
