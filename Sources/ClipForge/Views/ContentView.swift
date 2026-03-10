@@ -36,6 +36,8 @@ struct ContentView: View {
     @State private var newProjectName      = ""
     @State private var selectedExportQuality: ExportQualityOption = .p1080
     @State private var activePanel: ControlPanel = .zoom
+    @State private var timelinePanelHeight: CGFloat = 220
+    @State private var timelineDragBase: CGFloat = 220
 
     var body: some View {
         configured(navigationStack)
@@ -213,9 +215,41 @@ struct ContentView: View {
     // MARK: - Columns
 
     private var leftColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             VideoPlayerView(vm: vm)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            timelinePanel
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var timelinePanel: some View {
+        VStack(spacing: 0) {
+            // Drag handle
+            Color.clear
+                .frame(height: 6)
+                .overlay(
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.35))
+                        .frame(width: 36, height: 3)
+                )
+                .contentShape(Rectangle())
+                #if canImport(AppKit)
+                .onHover { inside in
+                    if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+                }
+                #endif
+                .gesture(
+                    DragGesture(coordinateSpace: .global)
+                        .onChanged { value in
+                            timelinePanelHeight = (timelineDragBase - value.translation.height)
+                                .clamped(to: 140...520)
+                        }
+                        .onEnded { _ in
+                            timelineDragBase = timelinePanelHeight
+                        }
+                )
 
             TimelineView(vm: vm)
                 .padding(.top, 8)
@@ -224,7 +258,8 @@ struct ContentView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(height: timelinePanelHeight)
+        .animation(nil, value: timelinePanelHeight)
     }
 
     private var rightColumn: some View {
