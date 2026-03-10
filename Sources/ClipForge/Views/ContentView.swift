@@ -344,6 +344,7 @@ struct ContentView: View {
                 HStack(spacing: 14) {
                     TransportButton(
                         title: "Jump to Start",
+                        shortcutDisplay: "⌘←",
                         shortcutHint: "Cmd-Left Arrow",
                         systemImage: "backward.end.fill",
                         size: 13
@@ -353,6 +354,7 @@ struct ContentView: View {
 
                     TransportButton(
                         title: vm.jumpBackTitle,
+                        shortcutDisplay: "⇧⌥←",
                         shortcutHint: "Shift-Option-Left Arrow",
                         systemImage: "backward.fill",
                         size: 13
@@ -362,6 +364,7 @@ struct ContentView: View {
 
                     TransportButton(
                         title: "Step Back 1 Frame",
+                        shortcutDisplay: "⌥←",
                         shortcutHint: "Option-Left Arrow",
                         systemImage: "backward.frame.fill",
                         size: 15
@@ -371,6 +374,7 @@ struct ContentView: View {
 
                     TransportButton(
                         title: vm.playPauseTitle,
+                        shortcutDisplay: "Space",
                         shortcutHint: "Space",
                         systemImage: vm.isPlaying ? "pause.fill" : "play.fill",
                         size: 20
@@ -380,6 +384,7 @@ struct ContentView: View {
 
                     TransportButton(
                         title: "Step Forward 1 Frame",
+                        shortcutDisplay: "⌥→",
                         shortcutHint: "Option-Right Arrow",
                         systemImage: "forward.frame.fill",
                         size: 15
@@ -389,6 +394,7 @@ struct ContentView: View {
 
                     TransportButton(
                         title: vm.jumpForwardTitle,
+                        shortcutDisplay: "⇧⌥→",
                         shortcutHint: "Shift-Option-Right Arrow",
                         systemImage: "forward.fill",
                         size: 13
@@ -398,6 +404,7 @@ struct ContentView: View {
 
                     TransportButton(
                         title: "Jump to End",
+                        shortcutDisplay: "⌘→",
                         shortcutHint: "Cmd-Right Arrow",
                         systemImage: "forward.end.fill",
                         size: 13
@@ -406,7 +413,7 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.vertical, 4)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1), lineWidth: 1))
             }

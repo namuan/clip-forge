@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TransportButton: View {
     let title: String
+    let shortcutDisplay: String?
     let shortcutHint: String?
     let systemImage: String
     let size: CGFloat
@@ -15,13 +16,23 @@ struct TransportButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: size, weight: .semibold))
-                .frame(width: size + 12, height: size + 12)
-                .contentShape(Rectangle())
+        VStack(spacing: 2) {
+            Button(action: action) {
+                Image(systemName: systemImage)
+                    .font(.system(size: size, weight: .semibold))
+                    .frame(width: size + 12, height: size + 12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+
+            if let shortcutDisplay {
+                Text(shortcutDisplay)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
         }
-        .buttonStyle(.borderless)
         .help(helpText)
         .accessibilityLabel(Text(title))
     }
