@@ -27,7 +27,7 @@ struct TransportButton: View {
 
             if let shortcutDisplay {
                 Text(shortcutDisplay)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)

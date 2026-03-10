@@ -7,18 +7,21 @@ struct VideoPlayerView: View {
     @ObservedObject var vm: ClipForgeViewModel
 
     var body: some View {
-        // Background determines layout size. Overlay fills that exact area so
-        // the inner GeometryReader always reads a stable, pre-determined size —
-        // no layout feedback is possible.
-        backgroundCanvas
-            .aspectRatio(vm.videoAspectRatio, contentMode: .fit)
-            .overlay {
-                if let player = vm.player {
-                    GeometryReader { geo in
-                        videoCard(player: player, canvas: geo.size)
+        VStack(spacing: 0) {
+            // Background determines layout size. Overlay fills that exact area so
+            // the inner GeometryReader always reads a stable, pre-determined size —
+            // no layout feedback is possible.
+            backgroundCanvas
+                .aspectRatio(vm.videoAspectRatio, contentMode: .fit)
+                .overlay {
+                    if let player = vm.player {
+                        GeometryReader { geo in
+                            videoCard(player: player, canvas: geo.size)
+                        }
                     }
                 }
-            }
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Video card
