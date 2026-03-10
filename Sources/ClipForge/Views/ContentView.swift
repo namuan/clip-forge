@@ -251,9 +251,6 @@ struct ContentView: View {
                         }
                 )
 
-            TimelineView(vm: vm)
-                .padding(.top, 8)
-
             VisualTimelineView(vm: vm)
                 .padding(.top, 4)
                 .padding(.bottom, 12)
@@ -343,6 +340,36 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if vm.player != nil {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 14) {
+                    TransportButton(systemImage: "backward.end.fill", size: 13) {
+                        vm.seek(to: 0); vm.currentTime = 0
+                    }
+                    .keyboardShortcut(.leftArrow, modifiers: [.command])
+
+                    TransportButton(systemImage: "backward.frame.fill", size: 15) {
+                        vm.stepBack()
+                    }
+
+                    TransportButton(
+                        systemImage: vm.isPlaying ? "pause.fill" : "play.fill",
+                        size: 20
+                    ) {
+                        vm.togglePlayPause()
+                    }
+                    .keyboardShortcut(" ", modifiers: [])
+
+                    TransportButton(systemImage: "forward.frame.fill", size: 15) {
+                        vm.stepForward()
+                    }
+
+                    TransportButton(systemImage: "forward.end.fill", size: 13) {
+                        vm.seek(to: vm.duration); vm.currentTime = vm.duration
+                    }
+                    .keyboardShortcut(.rightArrow, modifiers: [.command])
+                }
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 0) {
                     Button { handleSave() } label: {

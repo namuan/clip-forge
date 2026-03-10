@@ -361,15 +361,13 @@ struct VisualTimelineView: View {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else { return event }
             if NSApp.keyWindow?.firstResponder is NSTextView { return event }
-            // Delete (51) or Forward-delete (117)
-            guard event.keyCode == 51 || event.keyCode == 117 else { return event }
-            if let id = vm.selectedAnnotationID {
-                vm.removeAnnotation(id: id)
-                return nil
-            }
-            if let id = vm.selectedSegmentID {
-                vm.removeSegment(id: id)
-                return nil
+            switch event.keyCode {
+            case 123: vm.stepBack();    return nil   // ←
+            case 124: vm.stepForward(); return nil   // →
+            case 51, 117:                            // Delete / Forward-delete
+                if let id = vm.selectedAnnotationID { vm.removeAnnotation(id: id); return nil }
+                if let id = vm.selectedSegmentID    { vm.removeSegment(id: id);    return nil }
+            default: break
             }
             return event
         }
