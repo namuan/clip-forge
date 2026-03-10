@@ -51,6 +51,10 @@ struct SubtitleLocaleOption: Identifiable, Hashable, Sendable {
 
 @MainActor
 final class ClipForgeViewModel: ObservableObject {
+    private static let fallbackFrameRate = 30.0
+    private static let minimumJumpFrames = 3
+    private static let maximumJumpSeconds = 2.0
+    private static let proportionalJumpRatio = 0.002
 
     // MARK: - Player state
     @Published var player: AVPlayer?
@@ -58,6 +62,7 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var currentTime: Double = 0
     @Published var isPlaying: Bool = false
     @Published var videoAspectRatio: CGFloat = 16.0 / 9.0
+    @Published private(set) var videoFrameRate: Double = 30.0
 
     // MARK: - Zoom segments & annotations
     @Published var segments: [ZoomSegment] = []
@@ -102,6 +107,33 @@ final class ClipForgeViewModel: ObservableObject {
     @Published var playbackSpeed: Double = 1.0
 
     var effectiveTrimEnd: Double { trimEnd ?? duration }
+
+    var frameDuration: Double {
+        1.0 / max(videoFrameRate, 1)
+    }
+
+    var proportionalJumpFrameCount: Int {
+        let clipLength = max(effectiveTrimEnd - trimStart, frameDuration)
+        let proportionalJumpSeconds = clipLength * Self.proportionalJumpRatio
+        let minimumJumpSeconds = frameDuration * Double(Self.minimumJumpFrames)
+        let jumpSeconds = min(
+            max(proportionalJumpSeconds, minimumJumpSeconds),
+            Self.maximumJumpSeconds
+        )
+        return max(Self.minimumJumpFrames, Int(round(jumpSeconds / frameDuration)))
+    }
+
+    var jumpBackTitle: String {
+        "Jump Back \(proportionalJumpFrameCount) \(frameUnitLabel(for: proportionalJumpFrameCount))"
+    }
+
+    var jumpForwardTitle: String {
+        "Jump Forward \(proportionalJumpFrameCount) \(frameUnitLabel(for: proportionalJumpFrameCount))"
+    }
+
+    var playPauseTitle: String {
+        isPlaying ? "Pause" : "Play"
+    }
 
     var selectedSegment: ZoomSegment? {
         get { segments.first { $0.id == selectedSegmentID } }
@@ -290,6 +322,7 @@ final class ClipForgeViewModel: ObservableObject {
     private func setupPlayer(url: URL) {
         CFLogInfo("Setting up player with URL: \(url.lastPathComponent)")
         cleanupPlayer()
+        videoFrameRate = Self.fallbackFrameRate
         let asset = AVURLAsset(url: url)
         self.asset = asset
         let item   = AVPlayerItem(asset: asset)
@@ -303,9 +336,16 @@ final class ClipForgeViewModel: ObservableObject {
                     let d = try? await asset.load(.duration)
                     self.duration = d.map { CMTimeGetSeconds($0) } ?? 0
 
-                    if let srcVideo = try? await asset.loadTracks(withMediaType: .video).first,
-                       let naturalSize = try? await srcVideo.load(.naturalSize),
-                       let preferredTransform = try? await srcVideo.load(.preferredTransform) {
+                    if let srcVideo = try? await asset.loadTracks(withMediaType: .video).first {
+                        if let nominalFrameRate = try? await srcVideo.load(.nominalFrameRate) {
+                            let resolvedFrameRate = Double(nominalFrameRate)
+                            if resolvedFrameRate.isFinite, resolvedFrameRate > 0.001 {
+                                self.videoFrameRate = resolvedFrameRate
+                            }
+                        }
+
+                        if let naturalSize = try? await srcVideo.load(.naturalSize),
+                           let preferredTransform = try? await srcVideo.load(.preferredTransform) {
                         let orientedSize: CGSize = {
                             if abs(preferredTransform.b) > 0.5 || abs(preferredTransform.c) > 0.5 {
                                 return CGSize(width: naturalSize.height, height: naturalSize.width)
@@ -314,6 +354,7 @@ final class ClipForgeViewModel: ObservableObject {
                         }()
                         if orientedSize.width > 0.001, orientedSize.height > 0.001 {
                             self.videoAspectRatio = (orientedSize.width / orientedSize.height).clamped(to: 0.2...5)
+                        }
                         }
                     }
 
@@ -388,15 +429,57 @@ final class ClipForgeViewModel: ObservableObject {
         }
     }
 
+    func seekToStart() {
+        seek(to: trimStart)
+        CFLogDebug("Seeked to clip start")
+    }
+
+    func seekToEnd() {
+        seek(to: effectiveTrimEnd)
+        CFLogDebug("Seeked to clip end")
+    }
+
     func seek(to time: Double) {
         player?.seek(to: CMTime(seconds: time, preferredTimescale: 600),
                      toleranceBefore: .zero, toleranceAfter: .zero)
         CFLogDebug("Seeked to time: \(time)")
     }
 
-    private let frameDuration = 1.0 / 30.0
-    func stepForward() { let t = min(currentTime + frameDuration, effectiveTrimEnd); currentTime = t; seek(to: t); CFLogDebug("Stepped forward to: \(t)") }
-    func stepBack()    { let t = max(currentTime - frameDuration, trimStart);        currentTime = t; seek(to: t); CFLogDebug("Stepped back to: \(t)") }
+    func stepForward() {
+        let targetTime = min(currentTime + frameDuration, effectiveTrimEnd)
+        currentTime = targetTime
+        seek(to: targetTime)
+        CFLogDebug("Stepped forward to: \(targetTime)")
+    }
+
+    func stepBack() {
+        let targetTime = max(currentTime - frameDuration, trimStart)
+        currentTime = targetTime
+        seek(to: targetTime)
+        CFLogDebug("Stepped back to: \(targetTime)")
+    }
+
+    func jumpForward() {
+        let jumpFrameCount = proportionalJumpFrameCount
+        let targetTime = min(
+            currentTime + Double(jumpFrameCount) * frameDuration,
+            effectiveTrimEnd
+        )
+        currentTime = targetTime
+        seek(to: targetTime)
+        CFLogDebug("Jumped forward \(jumpFrameCount) frames to: \(targetTime)")
+    }
+
+    func jumpBack() {
+        let jumpFrameCount = proportionalJumpFrameCount
+        let targetTime = max(
+            currentTime - Double(jumpFrameCount) * frameDuration,
+            trimStart
+        )
+        currentTime = targetTime
+        seek(to: targetTime)
+        CFLogDebug("Jumped back \(jumpFrameCount) frames to: \(targetTime)")
+    }
 
     func setSpeed(_ speed: Double) {
         playbackSpeed = speed
@@ -983,8 +1066,13 @@ final class ClipForgeViewModel: ObservableObject {
         if let token = timeObserverToken { player?.removeTimeObserver(token); timeObserverToken = nil }
         player?.pause(); player = nil
         playerItemCancellable = nil
+        videoFrameRate = Self.fallbackFrameRate
         NotificationCenter.default.removeObserver(self)
         CFLogDebug("Player cleaned up")
+    }
+
+    private func frameUnitLabel(for count: Int) -> String {
+        count == 1 ? "Frame" : "Frames"
     }
 
     deinit {

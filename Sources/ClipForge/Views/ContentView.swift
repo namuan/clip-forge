@@ -27,7 +27,7 @@ private enum ControlPanel: String, CaseIterable {
 // MARK: - ContentView
 
 struct ContentView: View {
-    @StateObject private var vm = ClipForgeViewModel()
+    @ObservedObject var vm: ClipForgeViewModel
 
     @State private var showFilePicker      = false
     @State private var importingProject    = false   // true = project pick, false = video pick
@@ -342,31 +342,68 @@ struct ContentView: View {
         if vm.player != nil {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 14) {
-                    TransportButton(systemImage: "backward.end.fill", size: 13) {
-                        vm.seek(to: 0); vm.currentTime = 0
+                    TransportButton(
+                        title: "Jump to Start",
+                        shortcutHint: "Cmd-Left Arrow",
+                        systemImage: "backward.end.fill",
+                        size: 13
+                    ) {
+                        vm.seekToStart()
                     }
-                    .keyboardShortcut(.leftArrow, modifiers: [.command])
 
-                    TransportButton(systemImage: "backward.frame.fill", size: 15) {
+                    TransportButton(
+                        title: vm.jumpBackTitle,
+                        shortcutHint: "Shift-Option-Left Arrow",
+                        systemImage: "backward.fill",
+                        size: 13
+                    ) {
+                        vm.jumpBack()
+                    }
+
+                    TransportButton(
+                        title: "Step Back 1 Frame",
+                        shortcutHint: "Option-Left Arrow",
+                        systemImage: "backward.frame.fill",
+                        size: 15
+                    ) {
                         vm.stepBack()
                     }
 
                     TransportButton(
+                        title: vm.playPauseTitle,
+                        shortcutHint: "Space",
                         systemImage: vm.isPlaying ? "pause.fill" : "play.fill",
                         size: 20
                     ) {
                         vm.togglePlayPause()
                     }
-                    .keyboardShortcut(" ", modifiers: [])
 
-                    TransportButton(systemImage: "forward.frame.fill", size: 15) {
+                    TransportButton(
+                        title: "Step Forward 1 Frame",
+                        shortcutHint: "Option-Right Arrow",
+                        systemImage: "forward.frame.fill",
+                        size: 15
+                    ) {
                         vm.stepForward()
                     }
 
-                    TransportButton(systemImage: "forward.end.fill", size: 13) {
-                        vm.seek(to: vm.duration); vm.currentTime = vm.duration
+                    TransportButton(
+                        title: vm.jumpForwardTitle,
+                        shortcutHint: "Shift-Option-Right Arrow",
+                        systemImage: "forward.fill",
+                        size: 13
+                    ) {
+                        vm.jumpForward()
                     }
-                    .keyboardShortcut(.rightArrow, modifiers: [.command])
+
+                    TransportButton(
+                        title: "Jump to End",
+                        shortcutHint: "Cmd-Right Arrow",
+                        systemImage: "forward.end.fill",
+                        size: 13
+                    ) {
+                        vm.seekToEnd()
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
